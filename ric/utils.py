@@ -78,6 +78,11 @@ class Instructions_n():
         for i in range(num_rewards):
             self.score_splits.append("<rm{}_score>".format(i+1))
 
+    def get_post_with_score(self, query):
+        before_response_with_score = query.split(self.response_split)[0]
+        post_with_score = before_response_with_score.split(self.input_split)[1].strip()
+        return post_with_score
+
     def get_prompt(self, query):
         if self.score_splits[0] in query:
             before_response = query.split(self.score_splits[0])[0]
@@ -129,6 +134,11 @@ class Instructions_summary_n():
             text += self.score_splits[i] + ' ' + str(round(scores[i], 1)) + ' '
         text += "### Response: "
         return text
+
+    def get_post_with_score(self, query):
+        before_response_with_score = query.split(self.response_split)[0]
+        post_with_score = before_response_with_score.split(self.input_split)[1].strip()
+        return post_with_score
 
     def get_prompt(self, query):
         if self.score_splits[0] in query:
@@ -406,20 +416,20 @@ def load_reward_model(reward_peft_path, gpu_id):
 
 
 def load_main_tokenizer(tokenier_name):
-    DEFAULT_PAD_TOKEN = "[PAD]"
-    DEFAULT_EOS_TOKEN = "</s>"
-    DEFAULT_BOS_TOKEN = "<s>" 
-    DEFAULT_UNK_TOKEN = "<unk>" 
+    # DEFAULT_PAD_TOKEN = "[PAD]"
+    # DEFAULT_EOS_TOKEN = "</s>"
+    # DEFAULT_BOS_TOKEN = "<s>" 
+    # DEFAULT_UNK_TOKEN = "<unk>" 
 
     tokenizer = AutoTokenizer.from_pretrained(tokenier_name, use_fast = False)
-    tokenizer.add_special_tokens(
-        {
-            "eos_token": DEFAULT_EOS_TOKEN,
-            "bos_token": DEFAULT_BOS_TOKEN,
-            "unk_token": DEFAULT_UNK_TOKEN,
-            "pad_token": DEFAULT_PAD_TOKEN,
-        }
-    )
+    # tokenizer.add_special_tokens(
+    #     {
+    #         "eos_token": DEFAULT_EOS_TOKEN,
+    #         "bos_token": DEFAULT_BOS_TOKEN,
+    #         "unk_token": DEFAULT_UNK_TOKEN,
+    #         "pad_token": DEFAULT_PAD_TOKEN,
+    #     }
+    # )
     return tokenizer
 
 
@@ -684,3 +694,17 @@ def balancing_rewards(train_dataset, tokenizer, info_path=None, exp_type='assist
     return train_dataset, info
 
 
+def add_messages(sample, instructions):
+    """
+    Add messages field to each sample.
+    Format: [{"role": "user", "content": "prompt_with_score"}, {"role": "assistant", "content": "response"}]
+    """
+    summary_instructions = Instructions_summary_n.instruction_summary
+    user_content = instructions.get_post_with_score(sample['query'])
+    user_content = summary_instructions + ' ' + user_content if isinstance(instructions, Instructions_summary_n) else user_content
+    sample['messages'] = [
+        # {"role": "user", "content": sample['prompt_with_score']},
+        {"role": "user", "content": user_content},
+        {"role": "assistant", "content": sample['response']}
+    ]
+    return sample

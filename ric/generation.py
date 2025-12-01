@@ -3,7 +3,7 @@ from accelerate import Accelerator
 import torch
 from datasets import load_from_disk, disable_caching
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, DataCollatorWithPadding
+from transformers import AutoModelForCausalLM, DataCollatorWithPadding, set_seed
 from peft import PeftModel
 from torch.utils.data import DataLoader
 import numpy as np
@@ -13,7 +13,6 @@ from utils import get_clean_data, load_main_tokenizer, \
 from multi_reward_models import RewardModels
 tqdm.pandas()
 disable_caching()
-from trl import set_seed
 
 def generate_data(
     model_path,

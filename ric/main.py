@@ -20,14 +20,16 @@ class ScriptArguments:
     save_directory: Optional[str] = field(default='./logs_trl/', metadata={'help':'path'})
     learning_rate: Optional[float] = field(default=1e-5, metadata={"help": "the learning rate for online training"})
     batch_size: Optional[int] = field(default=1, metadata={"help": "the batch size"})
-    training_steps: Optional[int] = field(default=20000, metadata={'help': 'number of training steps in the offline training'})
+    training_epochs: Optional[int] = field(default=1, metadata={'help': 'number of training epochs in the offline training'})
+    training_steps: Optional[int] = field(default=None, metadata={'help': 'number of training steps in the offline training'})
     online_training_steps: Optional[int] = field(default=4000, metadata={'help': 'number of training steps in the online training'})
     gradient_accumulation_steps: Optional[int] = field(default=1, metadata={"help": "the number of gradient accumulation steps"})
     num_online_iterations: Optional[int] = field(default=1, metadata={'help': 'number of the online generation and training'})
     num_generation_samples: Optional[int] = field(default=20000, metadata={'help': 'number of samples generated'})
     max_grad_norm: Optional[float] = field(default=1, metadata={"help": "Maximum gradient norm for gradient clipping"})
     quantile_threshold: Optional[float] = field(default=0.7)
-    num_origin_samples: Optional[int] = field(default=10000) 
+    num_origin_samples: Optional[int] = field(default=10000)
+    max_train_samples: Optional[int] = field(default=None, metadata={"help": "maximum number of samples to train on"})
     load_in_8bit: Optional[bool] = field(default=True, metadata={"help": "loading model in 8 bit or bfloat16"})
     bf16: Optional[bool] = field(default=False, 
                                  metadata={"help": "if True, training with bfloat16 (not supported by V100, but for A100, A40, A6000), otherwise we use fp32"}
@@ -35,6 +37,7 @@ class ScriptArguments:
     wandb_name: Optional[str] = field(default='ric_assistant_harmlesshelpful_offline20000_lr1e-4', metadata={"help": "Name for this experiment"})
     base_model_name: Optional[str] = field(default='meta-llama/Llama-2-7b-hf', metadata={"help": "local path to the base model or the huggingface id"})
     peft_name: Optional[str] = field(default='', metadata={"help": "local path to the peft model"})
+    use_lora: Optional[bool] = field(default=False, metadata={"help": "if True, use lora for training"})
     reward_names:Optional[str] = field(default='harmless,helpful') 
     train_dataset_path: Optional[str] = field(default='./datasets/all_full_train_harmhelp.hf')
     train_reward_stats_path: Optional[str] = field(default='')
@@ -93,10 +96,13 @@ dataset = train_model(
     save_path=save_path + '/model_iter0',
     tokenizer_name=tokenizer_name,
     rm_tokenizer_path_list=rm_tokenizer_path_list,
-    training_steps=script_args.training_steps,
+    training_epochs=script_args.training_epochs,
+    training_steps=script_args.training_steps if script_args.training_steps is not None else None,
     learning_rate=1.414e-4,  # use larger lr for offline training than  online training (script_args.learning_rate)
     args=script_args,
     exp_type=exp_type,
+    use_lora=False,
+    max_train_samples=script_args.max_train_samples,
 )
 clean_gpu_memory()
 

@@ -17,7 +17,7 @@ from multi_reward_models import RewardModels
 # define paths for two datasets
 hhrlhf_dataset_path = 'Anthropic/hh-rlhf'
 summary_dataset_path = 'openai/summarize_from_feedback'
-tokenizer_name = 'meta-llama/Llama-2-7b-hf'
+tokenizer_name = 'Qwen/Qwen3-0.6B'
 
 
 @dataclass
@@ -33,10 +33,10 @@ print(reward_names)
 reward_path_tokenizer_dict = {
     'harmless': ['Ray2333/gpt2-large-harmless-reward_model'],
     'helpful': ['Ray2333/gpt2-large-helpful-reward_model'],
+    'humor': ['mohameddhiab/humor-no-humor'],
     'deberta': ['OpenAssistant/reward-model-deberta-v3-large-v2'],
     'summary': ['Tristan/gpt2_reward_summarization'],
     'faithful':['CogComp/bart-faithful-summary-detector'],
-    'humor': ['mohameddhiab/humor-no-humor'],
 }
 reward_model_path_list = []
 rm_tokenizer_path_list = []

@@ -8,3 +8,7 @@ check_data.py
 process_data.py
 ric_txt2img/data/*
 ric_txt2img/experiments/
+
+__pycache__
+*logs_trl*
+datasets

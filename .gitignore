@@ -10,5 +10,5 @@ ric_txt2img/data/*
 ric_txt2img/experiments/
 
 __pycache__
-*logs_trl*
+*logs_*
 datasets

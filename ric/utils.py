@@ -10,6 +10,8 @@ from datasets import load_dataset, Dataset, concatenate_datasets, load_from_disk
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+import sys
+
 disable_caching()
 
 def clean_gpu_memory():
@@ -109,6 +111,10 @@ class Instructions_n():
         for i in range(self.num_rewards):
             scores.append(self.get_score_index(query, i))
         return scores
+    
+    def get_full_response(self, prompt, response):
+        # prompt_without_score = prompt.split(self.score_splits[0])[0]
+        return self.input_split + ' ' + prompt + '\n\n' + self.response_split + ' ' + response
 
 
 class Instructions_summary_n():
@@ -170,6 +176,10 @@ class Instructions_summary_n():
         for i in range(self.num_rewards):
             scores.append(self.get_score_index(query, i))
         return scores
+
+    def get_full_response(self, prompt, response):
+        # prompt_without_score = prompt.split(self.score_splits[0])[0]
+        return self.instruction_split + ' ' + self.instruction_summary + ' ' + self.input_split + ' ' + prompt + self.response_split + ' ' + response
 
 
 def build_dataset_with_preference(path, tokenizer, rm_tokenizer1, rm_tokenizer2, preference, split='test',  size=None):
@@ -547,6 +557,33 @@ def reset_score_in_dataset(dataset, tokenizer, rewards_list=None, exp_type='assi
         return sample
     return dataset.map(add_score, batched=False, num_proc=20)
 
+def reset_score_in_dataset_chat_template(dataset, rewards_list=None, exp_type='assistant'):
+    n = 0
+    for name in dataset.column_names:
+        if name.startswith('score'):
+            n += 1
+    preferences = sample_goals(len(dataset), n, rewards_list)
+
+    if exp_type == 'assistant':
+        instructions = Instructions_n(n)
+    else:
+        instructions = Instructions_summary_n(n)
+
+    for i in range(n):
+        if 'score{}'.format(i+1) in dataset.column_names:
+            if len(preferences.shape) >= 2:
+                desired_score = preferences[:,i]
+            else:
+                desired_score = np.zeros(len(dataset)) + preferences
+            dataset = dataset.remove_columns('score{}'.format(i+1)).add_column('score{}'.format(i+1), desired_score)  
+    
+    def add_score(sample):
+        user_content_without_score = sample['messages'][0]['content'].split(instructions.score_splits[0])[0]
+        for i in range(n):
+            user_content_without_score += instructions.score_splits[i] + ' ' + str(np.round(sample['score{}'.format(i+1)].item(), 1)) + ' '  
+        sample['messages_prompt_reset_score'] = [{"role": "user", "content": user_content_without_score}]
+        return sample
+    return dataset.map(add_score, batched=False, num_proc=20)
 
 def dataset_from_csv(checkpoint_path, tokenizer):
     generated_dataset = pd.read_csv(checkpoint_path + '/data.csv')
@@ -616,6 +653,29 @@ def dataset_from_csv_n(checkpoint_path, tokenizer, exp_type='assistant', quantil
     generated_dataset = generated_dataset.map(process, batched=False, num_proc=20)
     return generated_dataset
 
+def dataset_from_json(checkpoint_path, tokenizer, exp_type='assistant', quantile_threshold=0.7):
+    generated_dataset = load_dataset('json', data_files=checkpoint_path + '/data.json')['train']
+    generated_dataset.set_format(type="torch")
+    num_scores = 0
+    for key in generated_dataset.column_names:
+        if key.startswith('obtained_score'):
+            i = int(key.strip('obtained_score'))
+            generated_dataset = generated_dataset.rename_column('obtained_score{}'.format(i), 'score{}'.format(i))
+            num_scores += 1
+    generated_dataset = generated_dataset.remove_columns(['desired_score{}'.format(i+1) for i in range(num_scores)])
+    instructions = Instructions_summary_n(num_scores) if exp_type == 'summary' else Instructions_n(num_scores)
+
+    def process(sample):
+        user_content_desired_scores = sample['messages'][0]['content']
+        user_content_without_score = user_content_desired_scores.split(instructions.score_splits[0])[0]
+        for i in range(num_scores):
+            user_content_without_score += instructions.score_splits[i] + ' ' + str(np.round(sample['score{}'.format(i+1)].item(), 1)) + ' '  
+        sample['messages'][0]['content'] = user_content_without_score
+        return sample
+    
+    generated_dataset = select_data_with_quantile(generated_dataset, quantile_threshold, num_scores)
+    generated_dataset = generated_dataset.map(process, batched=False, num_proc=1)
+    return generated_dataset
 
 def merge_dataset(dataset, online_dataset, save_path, tokenizer_name, info_path=None, sample_origin=10000, exp_type='assistant', quantile_threshold=0.7):
     tokenizer = load_main_tokenizer(tokenizer_name)
@@ -631,7 +691,9 @@ def merge_dataset(dataset, online_dataset, save_path, tokenizer_name, info_path=
     else:
         selected_dataset = dataset
 
-    generated_dataset = dataset_from_csv_n(save_path, tokenizer, exp_type=exp_type, quantile_threshold=quantile_threshold)
+    generated_dataset = dataset_from_json(save_path, tokenizer, exp_type=exp_type, quantile_threshold=quantile_threshold)
+    # print(generated_dataset)
+    # print(generated_dataset[0])
     if online_dataset is None:
         online_dataset = generated_dataset
     else:

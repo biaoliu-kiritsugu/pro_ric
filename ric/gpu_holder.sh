@@ -13,21 +13,18 @@ export CUDA_VISIBLE_DEVICES=4,5,6,7
 #     --exp_type 'summary' \
 #     --save_path './datasets/summary_pref1faithfuldeberta_messages.json'
 
-# offline training for summary task test
+# summary task of offline training
 accelerate launch main.py \
     --base_model_name 'Qwen/Qwen3-0.6B' \
     --train_dataset_path './datasets/summary_pref1faithfuldeberta.hf' \
-    --save_directory './logs_trl/' \
+    --save_directory './logs_gpu_holder/' \
     --learning_rate 1e-4 \
     --batch_size 8 \
-    --training_epochs 0 \
-    --online_training_epochs 3 \
-    --num_online_iterations 2 \
-    --num_generation_samples 20000 \
-    --num_origin_samples 10000 \
+    --training_epochs 30000 \
+    --num_online_iterations 0 \
     --load_in_8bit False \
     --bf16 True \
     --use_lora False \
-    --wandb_name 'summary_pref1faithfuldeberta_offline' \
+    --wandb_name 'summary_pref1faithfuldeberta_offline_gpu_holder' \
     --reward_names 'summary,faithful,deberta' \
     --exp_type 'summary' \

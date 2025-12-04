@@ -38,8 +38,9 @@ def train_model(
             output_dir=os.path.join(args.save_directory, args.wandb_name),
             dataloader_drop_last=True,
             do_eval=False,
-            save_strategy='epoch', 
-            save_steps=0,
+            save_strategy='no', 
+            # save_strategy='steps', 
+            # save_steps=1000000,
             logging_steps=10,
             per_device_train_batch_size=args.batch_size,
             per_device_eval_batch_size=args.batch_size,
@@ -50,7 +51,7 @@ def train_model(
             gradient_checkpointing=False,
             weight_decay=0.01,
             bf16=True if args.bf16 else False,
-            run_name=args.wandb_name,
+            run_name=args.wandb_name + '_iter' + str(iter),
             report_to='swanlab',
             ddp_find_unused_parameters=False,
             max_length=4096,
@@ -63,14 +64,14 @@ def train_model(
     gpu_id = process_id
     print('process: {}, model gpu id: {}'.format(process_id, gpu_id))
 
-    if use_lora:
-        lora_config = LoraConfig(
-            r=64, 
-            lora_alpha=128,
-            lora_dropout=0.05,
-            bias="none",
-            task_type="CAUSAL_LM",
-        )
+    # if use_lora:
+    #     lora_config = LoraConfig(
+    #         r=64, 
+    #         lora_alpha=128,
+    #         lora_dropout=0.05,
+    #         bias="none",
+    #         task_type="CAUSAL_LM",
+    #     )
     tokenizer = load_main_tokenizer(tokenizer_name)
 
     ### load dataset when input a path
@@ -80,8 +81,10 @@ def train_model(
     train_dataset = train_dataset.select(range(max_train_samples)) if max_train_samples is not None else train_dataset
     num_objectives = len(reward_model_path_list)
     instructions = Instructions_n(num_objectives) if exp_type == 'assistant' else Instructions_summary_n(num_objectives)
-    train_dataset = train_dataset.map(lambda x: add_messages(x, instructions), batched=False, num_proc=20)
-    train_dataset = train_dataset.select_columns(["messages"])
+    if "messages" not in train_dataset.column_names:
+        train_dataset = train_dataset.map(lambda x: add_messages(x, instructions), batched=False, num_proc=20)
+    score_name_list = [f"score{i+1}" for i in range(num_objectives)]
+    train_dataset = train_dataset.select_columns(["messages"] + score_name_list)
 
     selected_index = np.arange(0, len(train_dataset))
     np.random.shuffle(selected_index)
@@ -89,7 +92,7 @@ def train_model(
     print(f"Size of the train set: {len(dataset)}")
 
     #### training 
-    if training_epochs > 0 or training_steps > 0:
+    if training_epochs > 0 or (training_steps is not None and training_steps > 0):
         if args.load_in_8bit:
             model = AutoModelForCausalLM.from_pretrained(
                 base_model_name, 
@@ -100,8 +103,8 @@ def train_model(
                 torch_dtype=torch.bfloat16, device_map=gpu_id)
 
         model.resize_token_embeddings(len(tokenizer))
-        if peft_name is not None:
-            model = PeftModel.from_pretrained(model, peft_name, is_trainable=True)
+        # if peft_name is not None:
+        #     model = PeftModel.from_pretrained(model, peft_name, is_trainable=True)
 
         print_trainable_parameters(model)
         # if exp_type == 'assistant':
@@ -116,7 +119,7 @@ def train_model(
             model=model,
             args=training_args,
             train_dataset=dataset,
-            peft_config=lora_config if use_lora else None,
+            # peft_config=lora_config if use_lora else None,
             # packing=False,
             # dataset_text_field="query",
             # data_collator=collator,

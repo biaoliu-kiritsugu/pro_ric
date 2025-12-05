@@ -339,6 +339,70 @@ def build_summary_dataset_with_preference_n(path, tokenizer, rm_tokenizers, pref
     return ds
 
 
+def build_summary_dataset_with_preference_n_messages(path, tokenizer, rm_tokenizers, preference, active_reward_indices, split='test',  size=None):
+    if split == 'test': 
+        split = 'validation'
+    ds = load_dataset(path, 'comparisons')
+    ds = ds[split] 
+    ds = ds.filter(lambda x: x["info"]['post'] is not None and 100 < len(x["info"]['post']) < 1200 and x['info']["id"] is not None, batched=False, num_proc=30)
+
+    # need to remove duplicated prompts for evaluation
+    def remove_duplicate(duplicated_dataset):
+        duplicated_dataset = duplicated_dataset.filter(lambda x: x['info']["id"] is not None)
+        initial_list = duplicated_dataset.map(lambda x: {"id": x['info']["id"]})
+        _ , unique_indices = np.unique(initial_list["id"], return_index=True, axis=0)
+        filtered_dataset = duplicated_dataset.select(unique_indices.tolist())
+        return filtered_dataset
+
+    ds = remove_duplicate(ds)
+    if size is not None:
+        ds = ds.select(range(size))
+    ds = ds.select(range(0, min(len(ds),2000))) # select 2000 data 
+    
+    n = len(preference)
+    instructions = Instructions_summary_n(n)
+    def add_message(sample, chosen=True):
+        user_content = instructions.instruction_summary + sample['info']['post'].replace("\n", " ")
+        if chosen:
+            choice = sample["choice"] # select the best summary
+        else:
+            choice = 0 if sample["choice"] != 0 else 1
+        assistant_content = sample["summaries"][choice]["text"].replace("\n", " ").strip()
+        sample["messages"] = [
+            {"role": "user", "content": user_content},
+            {"role": "assistant", "content": assistant_content}
+        ]
+
+        info_post = sample['info']['post'].replace("\n", " ")
+        sample["query"] = instructions.prompt_input_noscore(info_post) + assistant_content
+        for i in range(len(active_reward_indices)):
+            if type(rm_tokenizers[i]) != str:
+                sample['reward_ids{}'.format(1+i)] = rm_tokenizers[i].encode(sample["query"])
+        return sample
+
+    ds = ds.map(add_message, batched=False, num_proc=20)
+    remove_columns = ['info', 'summaries', 'choice', 'worker', 'batch', 'split', 'extra', 'query']
+    for i in range(len(active_reward_indices)):
+        if type(rm_tokenizers[i]) != str:
+            ds = ds.filter(lambda x: len(x['reward_ids{}'.format(1+i)]) <= 512 and len(x['reward_ids{}'.format(1+i)]) >= 8)
+            remove_columns.append('reward_ids{}'.format(1+i))
+    ds = ds.remove_columns(remove_columns)
+    
+    for i in range(n):
+        ds = ds.add_column('score{}'.format(i+1), np.zeros(len(ds)) + preference[i])
+
+    def add_score(sample):
+        user_content_without_score = sample['messages'][0]['content']
+        for i in range(n):
+            user_content_without_score += instructions.score_splits[i] + ' ' + str(np.round(sample['score{}'.format(i+1)], 1)) + ' '  
+        sample['messages_prompt_with_score'] = [{"role": "user", "content": user_content_without_score}]
+        return sample
+
+    ds = ds.map(add_score, batched=False, num_proc=20)
+    ds.set_format(type="torch")
+    return ds
+
+
 def build_dataset(data_path, tokenizer, reward_model_list, rm_tokenizer, split='train', size=None):
     ds = load_dataset(data_path, split=split)
     if size is not None:

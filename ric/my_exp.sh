@@ -31,3 +31,84 @@ accelerate launch main.py \
     --wandb_name 'summary_pref1faithfuldeberta_offline' \
     --reward_names 'summary,faithful,deberta' \
     --exp_type 'summary' \
+
+export HF_ENDPOINT=https://hf-mirror.com
+export CUDA_VISIBLE_DEVICES=2,3
+# python evaluation_vllm.py \
+#     --base_model_name 'logs_trl/summary_pref1faithfuldeberta_offline/model_iter2' \
+#     --reward_names 'summary,faithful' \
+#     --exp_type 'summary' \
+#     --tensor_parallel_size 2 \
+#     --wandb_name 'ric_online_summary_pref1faithful_offline_test' \
+#     --reward_stats_path 'datasets/summary_pref1faithfuldeberta.hf/all_reward_stat.npy'
+
+# python evaluation_vllm.py \
+#     --base_model_name 'logs_trl/summary_pref1faithfuldeberta_offline/model_iter0' \
+#     --reward_names 'summary,faithful' \
+#     --exp_type 'summary' \
+#     --tensor_parallel_size 2 \
+#     --wandb_name 'ric_offline_summary_pref1faithful_offline_test' \
+#     --reward_stats_path 'datasets/summary_pref1faithfuldeberta.hf/all_reward_stat.npy'
+
+# summary and faithful rewards
+# offline
+python evaluation_vllm_all_rewards.py \
+    --base_model_name 'logs_trl/summary_pref1faithfuldeberta_offline/model_iter0' \
+    --reward_names 'summary,faithful' \
+    --exp_type 'summary' \
+    --tensor_parallel_size 2 \
+    --wandb_name 'ric_offline_summary_pref1faithful_test' \
+    --reward_stats_path 'datasets/summary_pref1faithfuldeberta.hf/all_reward_stat.npy' \
+    --reward_indices '0,1'
+
+# online
+python evaluation_vllm_all_rewards.py \
+    --base_model_name 'logs_trl/summary_pref1faithfuldeberta_offline/model_iter2' \
+    --reward_names 'summary,faithful' \
+    --exp_type 'summary' \
+    --tensor_parallel_size 2 \
+    --wandb_name 'ric_online_summary_pref1faithful_test' \
+    --reward_stats_path 'datasets/summary_pref1faithfuldeberta.hf/all_reward_stat.npy' \
+    --reward_indices '0,1'
+
+# summary and deberta rewards
+# offline
+python evaluation_vllm_all_rewards.py \
+    --base_model_name 'logs_trl/summary_pref1faithfuldeberta_offline/model_iter0' \
+    --reward_names 'summary,deberta' \
+    --exp_type 'summary' \
+    --tensor_parallel_size 2 \
+    --wandb_name 'ric_offline_summary_pref1deberta_test' \
+    --reward_stats_path 'datasets/summary_pref1faithfuldeberta.hf/all_reward_stat.npy' \
+    --reward_indices '0,2'
+
+# online
+python evaluation_vllm_all_rewards.py \
+    --base_model_name 'logs_trl/summary_pref1faithfuldeberta_offline/model_iter2' \
+    --reward_names 'summary,deberta' \
+    --exp_type 'summary' \
+    --tensor_parallel_size 2 \
+    --wandb_name 'ric_online_summary_pref1deberta_test' \
+    --reward_stats_path 'datasets/summary_pref1faithfuldeberta.hf/all_reward_stat.npy' \
+    --reward_indices '0,2'
+
+# faithful and deberta rewards
+# offline
+python evaluation_vllm_all_rewards.py \
+    --base_model_name 'logs_trl/summary_pref1faithfuldeberta_offline/model_iter0' \
+    --reward_names 'faithful,deberta' \
+    --exp_type 'summary' \
+    --tensor_parallel_size 2 \
+    --wandb_name 'ric_offline_summary_faithful_deberta_test' \
+    --reward_stats_path 'datasets/summary_pref1faithfuldeberta.hf/all_reward_stat.npy' \
+    --reward_indices '1,2'
+
+# online
+python evaluation_vllm_all_rewards.py \
+    --base_model_name 'logs_trl/summary_pref1faithfuldeberta_offline/model_iter2' \
+    --reward_names 'faithful,deberta' \
+    --exp_type 'summary' \
+    --tensor_parallel_size 2 \
+    --wandb_name 'ric_online_summary_faithful_deberta_test' \
+    --reward_stats_path 'datasets/summary_pref1faithfuldeberta.hf/all_reward_stat.npy' \
+    --reward_indices '1,2'

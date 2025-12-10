@@ -118,7 +118,7 @@ class Instructions_n():
 
 
 class Instructions_summary_n():
-    instruction_summary = "Generate a one-sentence summary of this post."
+    instruction_summary = "Generate a one-sentence summary of this post:"
     response_split = "### Response:"
     input_split = "### Input:"
     instruction_split = "### Instruction:"
@@ -822,7 +822,7 @@ def balancing_rewards(train_dataset, tokenizer, info_path=None, exp_type='assist
 
 def add_messages(sample, instructions):
     """
-    Add messages field to each sample.
+    Add messages field to each sample with scores.
     Format: [{"role": "user", "content": "prompt_with_score"}, {"role": "assistant", "content": "response"}]
     """
     summary_instructions = Instructions_summary_n.instruction_summary
@@ -832,5 +832,41 @@ def add_messages(sample, instructions):
         # {"role": "user", "content": sample['prompt_with_score']},
         {"role": "user", "content": user_content},
         {"role": "assistant", "content": sample['response']}
+    ]
+    return sample
+
+def add_messages_without_score(sample, instructions):
+    """
+    Add messages field to each sample without scores.
+    Format: [{"role": "user", "content": "prompt"}, {"role": "assistant", "content": "response"}]
+    """
+    summary_instructions = Instructions_summary_n.instruction_summary
+    user_content = instructions.get_post_with_score(sample['query'])
+    user_content_without_score = user_content.split(instructions.score_splits[0])[0]
+    user_content = summary_instructions + ' ' + user_content_without_score if isinstance(instructions, Instructions_summary_n) else user_content_without_score
+    sample['messages'] = [
+        {"role": "user", "content": user_content.strip()},
+        {"role": "assistant", "content": sample['response']}
+    ]
+    return sample
+
+def add_score4messaegs(sample, num_rewards, score_temperature, rate=10):
+    user_content = sample['messages'][0]['content'] + ' '
+    scores = np.array([sample['score{}'.format(i+1)] for i in range(num_rewards)])
+    scores = scores / score_temperature
+    scores = np.exp(scores) / np.sum(np.exp(scores)) 
+    scores = scores * rate
+    for i in range(num_rewards):
+        user_content += '<rm{}_score>'.format(i+1) + ' ' + str(np.round(scores[i], 1)) + ' '
+    sample['messages'][0]['content'] = user_content.strip()
+    return sample
+
+def add_prompt_messages_without_score(sample, instructions):
+    summary_instructions = Instructions_summary_n.instruction_summary
+    user_content = instructions.get_post_with_score(sample['query'])
+    user_content_without_score = user_content.split(instructions.score_splits[0])[0]
+    user_content = summary_instructions + ' ' + user_content_without_score if isinstance(instructions, Instructions_summary_n) else user_content_without_score
+    sample['messages'] = [
+        {"role": "user", "content": user_content},
     ]
     return sample

@@ -12,3 +12,5 @@ ric_txt2img/experiments/
 __pycache__
 *logs_*
 datasets
+plot
+pro_summary

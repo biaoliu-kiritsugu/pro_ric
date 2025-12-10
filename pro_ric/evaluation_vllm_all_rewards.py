@@ -204,7 +204,8 @@ if __name__ == '__main__':
 
     for k in range(len(preferences)): 
         preference = preferences[k]
-        target_rewards = map_rewards_from_preference(rewards_reference_list, preference, method='l2').reshape(-1)
+        # target_rewards = map_rewards_from_preference(rewards_reference_list, preference, method='l2').reshape(-1)
+        target_rewards = preference * 10
         print(k, target_rewards, preference)
         
         all_rewards, all_desired_rewards, all_full_prompts, all_full_responses = evaluate_model_vllm(

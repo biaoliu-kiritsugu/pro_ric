@@ -11,14 +11,14 @@ colors = sns.color_palette('deep')  # Good for colorblind viewers
 # colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
 
 # Define distinct marker styles for each method
-marker_styles = {
-    'ric offline': ('o', '--'),  # circle with dashed line
-    'ric online': ('s', '-.'),   # square with dash-dot line
-    'reward soups': ('^', ':'),  # triangle with dotted line
-    'ours': ('D', '-'),           # diamond with solid line
-    'ours_lr6': ('^', '--'),
-    'ours_lr7': ('p', ':'),
-}
+algorithms = ['ric offline', 'ric online', 'reward soups', 'ours_offline', 'ours_online']
+marker_styles = [
+    ('o', '--'),  # circle with dashed line
+    ('s', '-.'),  # square with dash-dot line
+    ('^', ':'),   # triangle with dotted line
+    ('D', '-'),   # diamond with solid line
+    ('p', ':'),
+]
 
 # Line widths and marker sizes
 linewidth = 2
@@ -81,11 +81,17 @@ def plot_points(dir, label, shift=[0,0], txt_color='black', normalize_path=None,
             obtained_scores[:, i] = (obtained_scores[:, i] - norm_info[i][0]) / norm_info[i][1] 
 
     # Get the appropriate marker and line style for this label
-    marker, linestyle = marker_styles.get(label, ('o', '-'))
+    if label in algorithms:
+        idx = algorithms.index(label)
+        marker, linestyle = marker_styles[idx]
+        color = colors[idx]
+    else:
+        marker, linestyle = ('o', '-')
+        color = 'black'
 
     # Plot the points with consistent styling
     plt.scatter(obtained_scores[:, 0] + shift[0], obtained_scores[:, 1] + shift[1], 
-                marker=marker, color=colors[list(marker_styles.keys()).index(label)], 
+                marker=marker, color=color, 
                 s=markersize*10, edgecolor='k', linewidth=0.8)
 
     if len(pref_lis):
@@ -97,7 +103,7 @@ def plot_points(dir, label, shift=[0,0], txt_color='black', normalize_path=None,
     pareto_points = find_pareto_points(obtained_scores, threshold)
     # pareto_points = obtained_scores
     plt.plot(pareto_points[:, 0] + shift[0], pareto_points[:, 1] + shift[1], 
-            color=colors[list(marker_styles.keys()).index(label)],
+            color=color,
             marker=marker, linestyle=linestyle, 
             linewidth=linewidth, markersize=markersize, 
             label=label, markeredgecolor='k', markeredgewidth=0.5)
@@ -111,9 +117,9 @@ name1 = 'summary'
 name2 = 'deberta'
 
 # Plot each method with distinct styling
-plot_points('/data/liubiao/llm/a800_2/RiC/ric/logs_trl_eval/ric_offline_summary_pref1deberta_test', 'ours')
-plot_points('/data/liubiao/llm/a800_2/RiC/ric/logs_trl_eval/test/ric_offline_summary_pref1deberta_test', 'ric offline')
-plot_points('/data/liubiao/llm/a800_2/RiC/ric/logs_trl_eval/test/ric_online_summary_pref1deberta_test', 'ric online')
+plot_points('/data/liubiao/llm/a800_2/RiC/ric/logs_trl_eval/ric_offline_summary_pref1deberta_test', 'ours_offline')
+plot_points('/data/liubiao/llm/a800_2/RiC/ric/logs_trl_eval/ric_offline_summary_pref1deberta_test', 'ric offline')
+plot_points('/data/liubiao/llm/a800_2/RiC/ric/logs_trl_eval/ric_online_summary_pref1deberta_test', 'ric online')
 # plot_points('', 'ours')
 
 # Improve axis labels and legend

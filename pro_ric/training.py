@@ -5,9 +5,7 @@ from datasets import load_from_disk, disable_caching
 from transformers import AutoModelForCausalLM, TrainingArguments, set_seed
 from trl import SFTTrainer, SFTConfig
 import numpy as np
-import pandas as pd
-from peft import LoraConfig, PeftModel
-from utils import Instructions_n, load_main_tokenizer, save_configs, Instructions_summary_n, print_trainable_parameters, add_messages
+from utils import Instructions_n, load_main_tokenizer, save_configs, Instructions_summary_n, print_trainable_parameters, add_score4messaegs
 disable_caching()
 
 
@@ -29,6 +27,8 @@ def train_model(
     exp_type='assistant',
     use_lora=False,
     max_train_samples=None,
+    score_temperature=0.1,
+    score_rate=10,
 ):
     set_seed(8888 + iter)
     print('base model: ', base_model_name)
@@ -79,13 +79,9 @@ def train_model(
         train_dataset = load_from_disk(train_dataset)
 
     train_dataset = train_dataset.select(range(max_train_samples)) if max_train_samples is not None else train_dataset
-    num_objectives = len(reward_model_path_list)
-    instructions = Instructions_n(num_objectives) if exp_type == 'assistant' else Instructions_summary_n(num_objectives)
-    if "messages" not in train_dataset.column_names:
-        train_dataset = train_dataset.map(lambda x: add_messages(x, instructions), batched=False, num_proc=20)
-    score_name_list = [f"score{i+1}" for i in range(num_objectives)]
-    train_dataset = train_dataset.select_columns(["messages"] + score_name_list)
-
+    num_rewards = len(reward_model_path_list)
+    train_dataset = train_dataset.map(lambda x: add_score4messaegs(x, num_rewards, score_temperature, score_rate), batched=False, num_proc=20)
+    # print(train_dataset[0:3])
     selected_index = np.arange(0, len(train_dataset))
     np.random.shuffle(selected_index)
     dataset = train_dataset.select(selected_index)

@@ -24,6 +24,8 @@ if __name__ == "__main__":
         save_directory: Optional[str] = field(default='./logs_trl/', metadata={'help':'path'})
         learning_rate: Optional[float] = field(default=1e-5, metadata={"help": "the learning rate for online training"})
         batch_size: Optional[int] = field(default=1, metadata={"help": "the batch size"})
+        score_temperature: Optional[float] = field(default=0.5, metadata={"help": "the temperature for the score softmax normalization"})
+        score_rate: Optional[float] = field(default=10, metadata={"help": "the rate for the score softmax normalization"})
         training_epochs: Optional[int] = field(default=1, metadata={'help': 'number of training epochs in the offline training'})
         online_training_epochs: Optional[int] = field(default=1, metadata={'help': 'number of training epochs in the online training'})
         training_steps: Optional[int] = field(default=None, metadata={'help': 'number of training steps in the offline training'})
@@ -108,6 +110,8 @@ if __name__ == "__main__":
         exp_type=exp_type,
         use_lora=False,
         max_train_samples=script_args.max_train_samples,
+        score_temperature=script_args.score_temperature,
+        score_rate=script_args.score_rate,
     )
     clean_gpu_memory()
 
@@ -122,7 +126,7 @@ if __name__ == "__main__":
         model_path = checkpoint_path
 
         # ### generation
-        if script_args.num_generation_samples > 0 and not os.path.exists(os.path.join(checkpoint_path, 'data.csv')):
+        if script_args.num_generation_samples > 0 and not os.path.exists(os.path.join(checkpoint_path, 'data.json')):
             generate_data(
                 model_path,
                 reward_model_path_list=reward_model_path_list,
@@ -160,6 +164,7 @@ if __name__ == "__main__":
             args=script_args,
             exp_type=exp_type,
             max_train_samples=script_args.max_train_samples,
+            score_temperature=script_args.score_temperature,
         )
         clean_gpu_memory()
         time.sleep(30)

@@ -20,8 +20,14 @@ import sys
 import gc
 import multiprocessing
 from multiprocessing import Process, Queue
+import socket
 tqdm.pandas()
 disable_caching()
+
+def get_free_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(('', 0))
+        return s.getsockname()[1]
 
 
 def _generate_in_subprocess(model_path, local_inputs, sampling_params_dict, process_id, result_file_path, env_vars):
@@ -41,6 +47,26 @@ def _generate_in_subprocess(model_path, local_inputs, sampling_params_dict, proc
         for key, value in env_vars.items():
             if value is not None:
                 os.environ[key] = str(value)
+
+        # 让每个子进程“独立启动自己的 vLLM / process group”
+        # - 避免继承 accelerate 的 RANK/WORLD_SIZE 后，子进程之间互相 rendezvous 卡住
+        # - 同时确保每个子进程仍然用“父进程对应的 GPU”
+        parent_local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+        parent_cvd = os.environ.get("CUDA_VISIBLE_DEVICES")
+        if parent_cvd:
+            cvd_list = [x.strip() for x in parent_cvd.split(",") if x.strip() != ""]
+            if len(cvd_list) >= 1:
+                chosen_idx = min(max(parent_local_rank, 0), len(cvd_list) - 1)
+                # 缩到单卡：子进程内部只看到 1 张 GPU
+                os.environ["CUDA_VISIBLE_DEVICES"] = cvd_list[chosen_idx]
+                os.environ["LOCAL_RANK"] = "0"
+
+        # 单进程独立组：不要继承 accelerate 的 rank/world_size
+        os.environ["RANK"] = "0"
+        os.environ["WORLD_SIZE"] = "1"
+        os.environ["MASTER_ADDR"] = "127.0.0.1"
+        # 仅用于兼容某些依赖会读取该变量（本文件后面也会打印它）
+        os.environ["MASTER_PORT"] = str(get_free_port())
         
         # 打印关键环境变量用于调试
         print(f"Subprocess {process_id} env vars: RANK={os.environ.get('RANK')}, "
@@ -61,27 +87,30 @@ def _generate_in_subprocess(model_path, local_inputs, sampling_params_dict, proc
         # 对于 tensor_parallel_size=1，每个子进程需要独立的单进程分布式环境
         import torch.distributed as dist
         if not dist.is_initialized():
-            # 确保环境变量已设置
-            if 'RANK' not in os.environ:
-                os.environ['RANK'] = '0'
-            if 'WORLD_SIZE' not in os.environ:
-                os.environ['WORLD_SIZE'] = '1'
-            if 'MASTER_ADDR' not in os.environ:
-                os.environ['MASTER_ADDR'] = 'localhost'
-            if 'MASTER_PORT' not in os.environ:
-                # 为每个子进程使用不同的端口，避免冲突
-                base_port = 29500
-                os.environ['MASTER_PORT'] = str(base_port + process_id * 100)
-
+            # 用 file:// 初始化，完全避免端口不一致/占用导致的 hang
+            init_file = os.path.join(
+                tempfile.gettempdir(),
+                f"vllm_dist_init_{process_id}_{os.getpid()}_{int(time.time() * 1e6)}"
+            )
+            init_method = f"file://{init_file}"
+            print(f"Subprocess {process_id}: Initializing torch.distributed with {init_method}")
+            print(
+                f"Subprocess {process_id}: "
+                f"RANK={os.environ.get('RANK')}, WORLD_SIZE={os.environ.get('WORLD_SIZE')}, "
+                f"MASTER_ADDR={os.environ.get('MASTER_ADDR')}, MASTER_PORT={os.environ.get('MASTER_PORT')}, "
+                f"CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES')}"
+            )
             dist.init_process_group(
                 backend='nccl',
-                init_method='env://',
+                init_method=init_method,
                 rank=int(os.environ['RANK']),
                 world_size=int(os.environ['WORLD_SIZE'])
             )
 
-        print(f"Subprocess {process_id}: Initialized torch.distributed with env:// "
-                f"(rank={os.environ['RANK']}, world_size={os.environ['WORLD_SIZE']})")
+        print(
+            f"Subprocess {process_id}: Initialized torch.distributed "
+            f"(rank={os.environ['RANK']}, world_size={os.environ['WORLD_SIZE']})"
+        )
         
         print("Loading vLLM model for process {} in subprocess".format(process_id))
         llm = LLM(model=model_path,
@@ -109,6 +138,14 @@ def _generate_in_subprocess(model_path, local_inputs, sampling_params_dict, proc
         with open(result_file_path, 'w', encoding='utf-8') as f:
             json.dump(result_data, f, ensure_ascii=False, indent=2)
         print(f"Subprocess {process_id}: Results saved to file successfully")
+        # close the distributed process group
+        dist.destroy_process_group()
+        # from vllm.distributed.parallel_state import destroy_model_parallel
+        # destroy_model_parallel()
+        # # del llm.llm_engine.model_executor.driver_worker
+        # del llm
+        # gc.collect()
+        # torch.cuda.empty_cache()
         os._exit(0)
 
     except Exception as e:
@@ -304,6 +341,7 @@ def generate_data(
             print('total average obtained score {}: {}'.format(i+1, np.mean(evaluation_result['obtained_score{}'.format(i+1)])))
             print('total average desired score {}: {}'.format(i+1, np.mean(evaluation_result['desired_score{}'.format(i+1)])))
 
+        print("length of the datasets: {}".format(len(evaluation_result['messages'])))
         # save as json dataset
         dataset = Dataset.from_dict(evaluation_result)
         dataset.to_json(os.path.join(save_path,'data.json'))

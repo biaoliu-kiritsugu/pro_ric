@@ -139,6 +139,8 @@ if __name__ == "__main__":
                 iter=i,
                 args=script_args,
                 exp_type=exp_type,
+                score_temperature=script_args.score_temperature,
+                score_rate=script_args.score_rate,
             )
 
         clean_gpu_memory()

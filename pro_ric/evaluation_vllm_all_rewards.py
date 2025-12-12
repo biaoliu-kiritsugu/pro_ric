@@ -33,11 +33,12 @@ summary_dataset_path = 'openai/summarize_from_feedback'
 class ScriptArguments:
     num_prefer_points: Optional[int] = field(default=10)
     log_with: Optional[str] = field(default='wandb', metadata={"help": "use 'wandb' to log with wandb"})
-    save_directory: Optional[str] = field(default='./logs_trl_eval/')
+    save_directory: Optional[str] = field(default='./logs_trl_eval_final/')
     wandb_name: Optional[str] = field(default='test', metadata={"help": "Name for this experiment"})
     reward_names: Optional[str] = field(default='harmless,helpful') 
     base_model_name: Optional[str] = field(default='meta-llama/Llama-2-7b-hf', metadata={"help": "local path to the base model or the huggingface id"})
     reward_stats_path: Optional[str] = field(default='')
+    score_rate: Optional[float] = field(default=10)
     exp_type: Optional[str] = field(default='assistant', metadata={"help": "exp type, 'summary' or 'assistant' "})
     tensor_parallel_size: Optional[int] = field(default=1, metadata={"help": "tensor parallel size"})
     reward_indices: Optional[str] = field(default=None, metadata={"help": "indices of rewards to evaluate, e.g. '0,1'"})
@@ -205,7 +206,7 @@ if __name__ == '__main__':
     for k in range(len(preferences)): 
         preference = preferences[k]
         # target_rewards = map_rewards_from_preference(rewards_reference_list, preference, method='l2').reshape(-1)
-        target_rewards = preference * 10
+        target_rewards = preference * script_args.score_rate
         print(k, target_rewards, preference)
         
         all_rewards, all_desired_rewards, all_full_prompts, all_full_responses = evaluate_model_vllm(

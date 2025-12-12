@@ -5,7 +5,7 @@ from datasets import load_from_disk, disable_caching
 from transformers import AutoModelForCausalLM, TrainingArguments, set_seed
 from trl import SFTTrainer, SFTConfig
 import numpy as np
-from utils import Instructions_n, load_main_tokenizer, save_configs, Instructions_summary_n, print_trainable_parameters, add_score4messaegs
+from utils import Instructions_n, add_chat_template_kwargs, load_main_tokenizer, save_configs, Instructions_summary_n, print_trainable_parameters, add_score4messaegs
 disable_caching()
 
 
@@ -80,11 +80,12 @@ def train_model(
 
     train_dataset = train_dataset.select(range(max_train_samples)) if max_train_samples is not None else train_dataset
     num_rewards = len(reward_model_path_list)
-    train_dataset = train_dataset.map(lambda x: add_score4messaegs(x, num_rewards, score_temperature, score_rate), batched=False, num_proc=20)
+    dataset = train_dataset.map(lambda x: add_score4messaegs(x, num_rewards, score_temperature, score_rate), batched=False, num_proc=20)
     # print(train_dataset[0:3])
-    selected_index = np.arange(0, len(train_dataset))
+    selected_index = np.arange(0, len(dataset))
     np.random.shuffle(selected_index)
-    dataset = train_dataset.select(selected_index)
+    dataset = dataset.select(selected_index)
+    dataset = dataset.map(add_chat_template_kwargs, batched=False, num_proc=20)
     print(f"Size of the train set: {len(dataset)}")
 
     #### training 

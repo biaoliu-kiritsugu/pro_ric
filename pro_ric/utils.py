@@ -576,19 +576,25 @@ def map_rewards_from_preference(rewards_list, preference, method='linf'):
 
 
 
-def sample_goals(size, num_rewards=2, rewards_list=None, maximum=0.9999):
-    if rewards_list is None:
-        samples = np.random.normal(0, 1, 100000)
-        low, high = np.round(np.quantile(samples, 0), 1), np.round(np.quantile(samples, 1),1)
+def sample_goals(
+    size,
+    num_rewards=2,
+    score_temperature=0.1,
+    score_rate=10,
+):
+    """
+    Sample preference vectors.
 
-        preferences = np.round(np.random.random((size, num_rewards)) * (high - low) + low, 1)
-        for k in range(len(preferences)):
-            min_index = np.argmin(preferences[k])
-            for j in range(num_rewards):
-                if j != min_index:
-                    preferences[k][j] = high
-    else: 
-        raise NotImplementedError
+    Current behavior (when rewards_list is None):
+    - sample random logits -> softmax (sum=1) -> scale by score_rate (sum=score_rate)
+    - score_temperature controls how peaky the softmax is (smaller => peakier)
+    """
+    logits = np.random.normal(0, 1, (size, num_rewards))
+    logits = logits / score_temperature
+    logits = logits - np.max(logits, axis=1, keepdims=True)  # stable softmax
+    exp_logits = np.exp(logits)
+    probs = exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
+    preferences = probs * score_rate
     return np.round(preferences, 1)
 
 
@@ -621,12 +627,12 @@ def reset_score_in_dataset(dataset, tokenizer, rewards_list=None, exp_type='assi
         return sample
     return dataset.map(add_score, batched=False, num_proc=20)
 
-def reset_score_in_dataset_chat_template(dataset, rewards_list=None, exp_type='assistant'):
+def reset_score_in_dataset_chat_template(dataset, rewards_list=None, exp_type='assistant', score_temperature=0.1, score_rate=10):
     n = 0
     for name in dataset.column_names:
         if name.startswith('score'):
             n += 1
-    preferences = sample_goals(len(dataset), n, rewards_list)
+    preferences = sample_goals(len(dataset), n, score_temperature, score_rate)
 
     if exp_type == 'assistant':
         instructions = Instructions_n(n)
@@ -642,7 +648,7 @@ def reset_score_in_dataset_chat_template(dataset, rewards_list=None, exp_type='a
             dataset = dataset.remove_columns('score{}'.format(i+1)).add_column('score{}'.format(i+1), desired_score)  
     
     def add_score(sample):
-        user_content_without_score = sample['messages'][0]['content'].split(instructions.score_splits[0])[0]
+        user_content_without_score = sample['messages'][0]['content']
         for i in range(n):
             user_content_without_score += instructions.score_splits[i] + ' ' + str(np.round(sample['score{}'.format(i+1)].item(), 1)) + ' '  
         sample['messages_prompt_reset_score'] = [{"role": "user", "content": user_content_without_score}]
@@ -732,9 +738,7 @@ def dataset_from_json(checkpoint_path, tokenizer, exp_type='assistant', quantile
     def process(sample):
         user_content_desired_scores = sample['messages'][0]['content']
         user_content_without_score = user_content_desired_scores.split(instructions.score_splits[0])[0]
-        for i in range(num_scores):
-            user_content_without_score += instructions.score_splits[i] + ' ' + str(np.round(sample['score{}'.format(i+1)].item(), 1)) + ' '  
-        sample['messages'][0]['content'] = user_content_without_score
+        sample['messages'][0]['content'] = user_content_without_score.strip()
         return sample
     
     generated_dataset = select_data_with_quantile(generated_dataset, quantile_threshold, num_scores)
@@ -870,3 +874,9 @@ def add_prompt_messages_without_score(sample, instructions):
         {"role": "user", "content": user_content},
     ]
     return sample
+
+def add_chat_template_kwargs(example):
+    if "chat_template_kwargs" not in example:
+        example["chat_template_kwargs"] = {}
+    example["chat_template_kwargs"]["enable_thinking"] = False
+    return example

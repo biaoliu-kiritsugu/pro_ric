@@ -181,6 +181,7 @@ def generate_data(
     exp_type='assistant',
     score_temperature=0.1,
     score_rate=10,
+    pro_path=None,
 ):
     set_seed(8888 + iter)
     print('Generating ...')
@@ -230,7 +231,15 @@ def generate_data(
     
     local_dataset = selected_dataset.shard(num_shards=accelerator.num_processes, index=process_id)
     # print(local_dataset[0])
-    local_dataset = reset_score_in_dataset_chat_template(local_dataset, exp_type=exp_type, score_temperature=score_temperature, score_rate=score_rate)
+    local_dataset = reset_score_in_dataset_chat_template(
+        local_dataset, 
+        exp_type=exp_type, 
+        score_temperature=score_temperature, 
+        score_rate=score_rate, 
+        pro_path=pro_path,
+        tokenizer=tokenizer,
+        gpu_id=gpu_id
+    )
 
     remove_columns = []
     for name in ['input_ids', 'prompt', 'text', 'response', 'query', 'prompt_with_score', 'messages'] + scores_name_list:

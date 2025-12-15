@@ -16,12 +16,12 @@ export HF_ENDPOINT=https://hf-mirror.com
 # train pro for summary task
 # accelerate launch train_pro.py \
 #     --model_name Qwen/Qwen3-0.6B \
-#     --dataset_path ./datasets/summary_pref1faithfuldeberta.hf \
-#     --output_dir ./pro_summary \
+#     --dataset_path ./datasets/summary_pref1faithfuldeberta_messages.hf \
+#     --output_dir ./pro/pro_summary \
 #     --num_epochs 3 \
 #     --batch_size 16 \
 #     --learning_rate 1e-5 \
-#     --temperature 0.2 \
+#     --temperature 1 \
 #     --exp_type 'summary' \
 #     --max_length 512 \
 
@@ -34,22 +34,45 @@ export HF_ENDPOINT=https://hf-mirror.com
 accelerate launch main.py \
     --base_model_name 'Qwen/Qwen3-0.6B' \
     --train_dataset_path './datasets/summary_pref1faithfuldeberta_messages.hf' \
-    --save_directory './logs_trl_pro_final/' \
+    --save_directory './logs_pro/' \
     --learning_rate 1e-4 \
     --batch_size 8 \
     --training_epochs 0 \
     --score_temperature 0.5 \
     --score_rate 10 \
+    --pro_path './pro/pro_summary' \
     --online_training_epochs 3 \
-    --num_online_iterations 8 \
+    --num_online_iterations 4 \
     --num_generation_samples 60000 \
     --num_origin_samples 0 \
     --load_in_8bit False \
     --bf16 True \
     --use_lora False \
-    --wandb_name 'summary_pref1faithfuldeberta_online_pro_t0.5_rate10_gen_60000_iter4' \
+    --wandb_name 'summary_pref1faithfuldeberta_online_pro_t0.5_rate10_gen60000_iter4' \
     --reward_names 'summary,faithful,deberta' \
     --exp_type 'summary' \
+
+# accelerate launch main.py \
+#     --base_model_name 'Qwen/Qwen3-0.6B' \
+#     --train_dataset_path './datasets/summary_pref1faithfuldeberta_messages.hf' \
+#     --save_directory './logs_pro_test/' \
+#     --learning_rate 1e-4 \
+#     --batch_size 8 \
+#     --training_epochs 0 \
+#     --score_temperature 0.5 \
+#     --score_rate 10 \
+#     --pro_path ./pro/pro_summary \
+#     --online_training_epochs 1 \
+#     --num_online_iterations 2 \
+#     --num_generation_samples 64 \
+#     --num_origin_samples 0 \
+#     --max_train_samples 64 \
+#     --load_in_8bit False \
+#     --bf16 True \
+#     --use_lora False \
+#     --wandb_name 'test_summary_pref1faithfuldeberta_online_pro_t0.5_rate10_gen_60000_iter2' \
+#     --reward_names 'summary,faithful,deberta' \
+#     --exp_type 'summary' \
 
 # # summary and faithful rewards
 # offline
@@ -75,11 +98,11 @@ accelerate launch main.py \
 
 # online
 python evaluation_vllm_all_rewards.py \
-    --base_model_name 'logs_trl_pro_final/summary_pref1faithfuldeberta_online_pro_t0.5_rate10_gen_60000_iter4/model_iter8' \
+    --base_model_name 'logs_pro/summary_pref1faithfuldeberta_online_pro_t0.5_rate10_gen60000_iter4/model_iter4' \
     --reward_names 'summary,faithful' \
     --exp_type 'summary' \
     --tensor_parallel_size 2 \
-    --wandb_name 'ric_online_summary_pref1faithful_pro_t0.5_rate10_gen_60000_iter4_iter8' \
+    --wandb_name 'pro_online_summary_pref1faithful_pro_t0.5_rate10_gen60000_iter4' \
     --reward_stats_path 'datasets/summary_pref1faithfuldeberta.hf/all_reward_stat.npy' \
     --reward_indices '0,1' \
     --score_rate 10

@@ -575,6 +575,81 @@ def map_rewards_from_preference(rewards_list, preference, method='linf'):
     return target_rewards
 
 
+def sample_goals_from_pro(
+    dataset, 
+    num_rewards=3, 
+    score_temperature=1, 
+    score_rate=10, 
+    pro_path=None, 
+    gpu_id=0,
+):
+    """
+    Use a trained PRO (preference/score) classifier to predict a preference distribution
+    from the *user* content in `messages`, then scale it to match training-time score format.
+
+    Returns:
+        np.ndarray of shape (len(dataset), num_rewards), each row sums to ~score_rate.
+    """
+    if pro_path is None:
+        raise ValueError("pro_path must be provided for sample_goals_from_pro().")
+
+    # Accept either a direct model dir or a parent dir containing best_model/
+    model_dir = pro_path
+    if os.path.isdir(os.path.join(pro_path, "best_model")):
+        model_dir = os.path.join(pro_path, "best_model")
+
+    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    pro_model = AutoModelForSequenceClassification.from_pretrained(
+        model_dir, trust_remote_code=True
+    )
+    pro_model.eval()
+
+    # Validate label dim early to avoid silent shape mismatch downstream
+    model_num_labels = getattr(getattr(pro_model, "config", None), "num_labels", None)
+    if model_num_labels is not None and int(model_num_labels) != int(num_rewards):
+        raise ValueError(
+            f"PRO model num_labels={model_num_labels} != num_rewards={num_rewards}. "
+            f"Please pass the correct num_rewards or use a matching PRO checkpoint: {model_dir}"
+        )
+
+    device = torch.device(f"cuda:{gpu_id}")
+    pro_model.to(device)
+
+    # Build minimal chat messages: ONLY user content (strip any existing score tokens)
+    texts = []
+    for sample in dataset:
+        user_content = sample["messages"][0]["content"]
+        msg = [{"role": "user", "content": user_content.strip()}]
+        texts.append(tokenizer.apply_chat_template(msg, tokenize=False))
+
+    # Forward in batches
+    batch_size = 256
+    max_length = 512
+    all_scores = []
+    with torch.no_grad():
+        for start in tqdm(range(0, len(texts), batch_size), desc="PRO scoring", leave=False):
+            batch_texts = texts[start : start + batch_size]
+            inputs = tokenizer(
+                batch_texts,
+                padding=True,
+                truncation=True,
+                max_length=max_length,
+                return_tensors="pt",
+            )
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+            logits = pro_model(**inputs).logits  # (bs, num_rewards)
+            probs = torch.softmax(logits / float(score_temperature), dim=-1)
+            scaled = probs * float(score_rate)
+            all_scores.append(scaled.detach().cpu())
+
+    scores = torch.cat(all_scores, dim=0).numpy()
+    del pro_model
+    clean_gpu_memory()
+    return np.round(scores, 1)
+
 
 def sample_goals(
     size,
@@ -627,12 +702,24 @@ def reset_score_in_dataset(dataset, tokenizer, rewards_list=None, exp_type='assi
         return sample
     return dataset.map(add_score, batched=False, num_proc=20)
 
-def reset_score_in_dataset_chat_template(dataset, rewards_list=None, exp_type='assistant', score_temperature=0.1, score_rate=10):
+def reset_score_in_dataset_chat_template(
+    dataset, 
+    exp_type='assistant', 
+    score_temperature=0.1, 
+    score_rate=10, 
+    pro_path=None,
+    tokenizer=None,
+    gpu_id=0
+):
     n = 0
     for name in dataset.column_names:
         if name.startswith('score'):
             n += 1
-    preferences = sample_goals(len(dataset), n, score_temperature, score_rate)
+    if pro_path is None:
+        preferences = sample_goals(len(dataset), n, score_temperature, score_rate)
+    else:
+        print(f"Sampling goals from PRO model at {pro_path}...")
+        preferences = sample_goals_from_pro(dataset, n, score_temperature, score_rate, pro_path, gpu_id)
 
     if exp_type == 'assistant':
         instructions = Instructions_n(n)
@@ -762,10 +849,11 @@ def merge_dataset(dataset, online_dataset, save_path, tokenizer_name, info_path=
     generated_dataset = dataset_from_json(save_path, tokenizer, exp_type=exp_type, quantile_threshold=quantile_threshold)
     # print(generated_dataset)
     # print(generated_dataset[0])
-    if online_dataset is None:
-        online_dataset = generated_dataset
-    else:
-        online_dataset = concatenate_datasets([online_dataset, generated_dataset])
+    # if online_dataset is None:
+    #     online_dataset = generated_dataset
+    # else:
+    #     online_dataset = concatenate_datasets([online_dataset, generated_dataset])
+    online_dataset = generated_dataset
     
     if len(selected_dataset):
         merged_dataset = concatenate_datasets([selected_dataset, online_dataset])

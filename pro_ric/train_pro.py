@@ -197,15 +197,15 @@ def train(args):
                 })
                 
                 # Plot and save the loss curve every 100 batches
-                if global_step % 100 == 0:
-                    plt.figure(figsize=(15, 6))
-                    plt.plot(range(1, len(batch_losses) + 1), batch_losses)
-                    plt.title('Training Loss Curve (per batch)')
-                    plt.xlabel('Batch')
-                    plt.ylabel('Loss')
-                    plt.grid(True)
-                    plt.savefig(os.path.join(args.output_dir, 'loss_curve.png'))
-                    plt.close()
+                # if global_step % 100 == 0:
+                #     plt.figure(figsize=(15, 6))
+                #     plt.plot(range(1, len(batch_losses) + 1), batch_losses)
+                #     plt.title('Training Loss Curve (per batch)')
+                #     plt.xlabel('Batch')
+                #     plt.ylabel('Loss')
+                #     plt.grid(True)
+                #     plt.savefig(os.path.join(args.output_dir, 'loss_curve.png'))
+                #     plt.close()
         
         # Calculate average loss
         accelerator.wait_for_everyone()
@@ -225,15 +225,15 @@ def train(args):
                 tokenizer.save_pretrained(os.path.join(args.output_dir, "best_model"))
             
     # Final plot of the complete loss curve
-    if accelerator.is_main_process:
-        plt.figure(figsize=(15, 6))
-        plt.plot(range(1, len(batch_losses) + 1), batch_losses)
-        plt.title('Training Loss Curve (per batch)')
-        plt.xlabel('Batch')
-        plt.ylabel('Loss')
-        plt.grid(True)
-        plt.savefig(os.path.join(args.output_dir, 'loss_curve_final.png'))
-        plt.close()
+    # if accelerator.is_main_process:
+    #     plt.figure(figsize=(15, 6))
+    #     plt.plot(range(1, len(batch_losses) + 1), batch_losses)
+    #     plt.title('Training Loss Curve (per batch)')
+    #     plt.xlabel('Batch')
+    #     plt.ylabel('Loss')
+    #     plt.grid(True)
+    #     plt.savefig(os.path.join(args.output_dir, 'loss_curve_final.png'))
+    #     plt.close()
 
 if __name__ == "__main__":
     args = parse_args()

@@ -3,10 +3,36 @@ from accelerate import Accelerator
 import torch
 from datasets import load_from_disk, disable_caching
 from transformers import AutoModelForCausalLM, TrainingArguments, set_seed
+from transformers import TrainerCallback
 from trl import SFTTrainer, SFTConfig
 import numpy as np
+import swanlab
 from utils import Instructions_n, add_chat_template_kwargs, load_main_tokenizer, save_configs, Instructions_summary_n, print_trainable_parameters, add_score4messaegs
 disable_caching()
+
+
+class SwanLabUnifiedCallback(TrainerCallback):
+    """
+    Log Trainer metrics into an already-initialized SwanLab run.
+    This lets multiple SFT iterations write into the same swanlog directory/run.
+    """
+
+    def __init__(self, iter_id: int, prefix: str = "sft"):
+        self.iter_id = iter_id
+        self.prefix = prefix
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if swanlab is None:
+            return
+        if not getattr(state, "is_world_process_zero", True):
+            return
+        if not logs:
+            return
+        payload = {f"{self.prefix}/iter{self.iter_id}/{k}": v for k, v in logs.items()}
+        payload[f"{self.prefix}/iter"] = self.iter_id
+        payload[f"{self.prefix}/global_step"] = getattr(state, "global_step", None)
+        payload[f"{self.prefix}/epoch"] = getattr(state, "epoch", None)
+        swanlab.log(payload)
 
 
 def train_model(
@@ -51,8 +77,10 @@ def train_model(
             gradient_checkpointing=False,
             weight_decay=0.01,
             bf16=True if args.bf16 else False,
-            run_name=args.wandb_name + '_iter' + str(iter),
-            report_to='swanlab',
+            # Keep this stable across iterations; we unify logs at the SwanLab level.
+            run_name=args.wandb_name,
+            # Disable Transformers auto-integrations to avoid creating a new SwanLab run per iteration.
+            report_to=[],
             ddp_find_unused_parameters=False,
             max_length=4096,
         )
@@ -121,6 +149,8 @@ def train_model(
             # dataset_text_field="query",
             # data_collator=collator,
         )
+        # Log into the (single) SwanLab run initialized in main.py (if any).
+        trainer.add_callback(SwanLabUnifiedCallback(iter_id=iter, prefix="sft"))
         trainer.train()
         if process_id == 0:
             print("Saving last checkpoint of the model")

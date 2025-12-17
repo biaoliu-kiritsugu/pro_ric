@@ -9,6 +9,7 @@ from training import train_model
 from generation_vllm import generate_data
 from transformers import HfArgumentParser
 import time
+import swanlab
 
 # define paths for two datasets
 hhrlhf_dataset_path = 'Anthropic/hh-rlhf'
@@ -26,6 +27,7 @@ if __name__ == "__main__":
         batch_size: Optional[int] = field(default=1, metadata={"help": "the batch size"})
         score_temperature: Optional[float] = field(default=0.5, metadata={"help": "the temperature for the score softmax normalization"})
         score_rate: Optional[float] = field(default=10, metadata={"help": "the rate for the score softmax normalization"})
+        score_shift: Optional[float] = field(default=0, metadata={"help": "the score shift for the data generation"})
         pro_path: Optional[str] = field(default=None, metadata={"help": "the path to the pro model"})
         training_epochs: Optional[int] = field(default=1, metadata={'help': 'number of training epochs in the offline training'})
         online_training_epochs: Optional[int] = field(default=1, metadata={'help': 'number of training epochs in the online training'})
@@ -62,6 +64,21 @@ if __name__ == "__main__":
     if script_args.disable_wandb: # if you don't need the wandb log
         os.environ['WANDB_DISABLED'] = 'true' 
 
+    # Initialize ONE SwanLab run for the whole experiment (offline + multiple online iterations).
+    accelerator = Accelerator()
+    save_path = os.path.join(script_args.save_directory, script_args.wandb_name)
+    os.makedirs(save_path, exist_ok=True)
+    if swanlab is not None and accelerator.is_main_process:
+        # Put all logs into a single swanlog dir under this experiment folder.
+        swanlab_logdir = os.path.join(save_path, "swanlog")
+        os.makedirs(swanlab_logdir, exist_ok=True)
+        swanlab.init(
+            experiment_name=script_args.wandb_name,
+            description=f"PRO WIC SFT {exp_type} (offline + {script_args.num_online_iterations} online iters)",
+            config=vars(script_args),
+            logdir=swanlab_logdir,
+        )
+
     reward_names = [x.strip() for x in script_args.reward_names.split(',')]
     reward_path_tokenizer_dict = {
         'harmless': ['Ray2333/gpt2-large-harmless-reward_model'],
@@ -92,9 +109,6 @@ if __name__ == "__main__":
     for i in range(len(reward_model_path_list)):
         save_info['reward_peft_path{}'.format(i+1)] = reward_model_path_list[i]
     save_configs(save_info, os.path.join(script_args.save_directory, script_args.wandb_name))
-
-    save_path = os.path.join(script_args.save_directory, script_args.wandb_name)
-    os.makedirs(save_path, exist_ok=True)
 
     ## offline training 
     dataset = train_model(
@@ -142,6 +156,7 @@ if __name__ == "__main__":
                 exp_type=exp_type,
                 score_temperature=script_args.score_temperature,
                 score_rate=script_args.score_rate,
+                score_shift=script_args.score_shift,
                 pro_path=script_args.pro_path,
             )
 
@@ -172,6 +187,13 @@ if __name__ == "__main__":
         )
         clean_gpu_memory()
         time.sleep(30)
+
+    # Close SwanLab run (main process only)
+    if swanlab is not None and accelerator.is_main_process:
+        try:
+            swanlab.finish()
+        except Exception:
+            pass
 
 
 

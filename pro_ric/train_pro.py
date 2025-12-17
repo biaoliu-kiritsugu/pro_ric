@@ -53,7 +53,97 @@ def parse_args():
                         help="Experiment type, 'assistant' or 'summary'")
     parser.add_argument("--temperature", type=float, default=1.0,
                         help="Temperature for softmax normalization")
+    # Monitoring / logging
+    parser.add_argument(
+        "--monitor_outputs",
+        action="store_true",
+        help="Log per-dimension distribution stats for model outputs (logits/probs) and targets.",
+    )
+    parser.add_argument(
+        "--monitor_every_n_steps",
+        type=int,
+        default=50,
+        help="Logging interval (in optimizer steps) for output distribution monitoring.",
+    )
+    parser.add_argument(
+        "--monitor_max_rows",
+        type=int,
+        default=None,
+        help="Max number of gathered rows used to compute distribution stats (subsample if larger).",
+    )
+    parser.add_argument(
+        "--monitor_save_hist_png",
+        action="store_true",
+        help="If set, save histogram PNGs for logits/probs to disk (can be heavy).",
+    )
+    parser.add_argument(
+        "--monitor_hist_dir",
+        type=str,
+        default=None,
+        help="Directory to save histogram PNGs. Defaults to <output_dir>/monitor_hists if not set.",
+    )
+    parser.add_argument(
+        "--monitor_hist_bins",
+        type=int,
+        default=60,
+        help="Histogram bin count when saving PNGs.",
+    )
     return parser.parse_args()
+
+def _maybe_subsample_rows(x: torch.Tensor, max_rows: int, seed: int) -> torch.Tensor:
+    if max_rows is None or max_rows <= 0:
+        return x
+    if x.shape[0] <= max_rows:
+        return x
+    g = torch.Generator(device=x.device)
+    g.manual_seed(int(seed) & 0x7FFFFFFF)
+    idx = torch.randperm(x.shape[0], generator=g, device=x.device)[:max_rows]
+    return x.index_select(0, idx)
+
+def _dist_stats_per_dim(x: torch.Tensor, prefix: str, dim_names):
+    """
+    x: (N, D) float tensor (on CPU is fine)
+    Returns a flat dict of scalar stats per dim.
+    """
+    if x.numel() == 0:
+        return {}
+    x = x.float()
+    # stats over rows
+    mean = x.mean(dim=0)
+    std = x.std(dim=0, unbiased=False)
+    vmin = x.min(dim=0).values
+    vmax = x.max(dim=0).values
+    q = torch.tensor([0.05, 0.5, 0.95], device=x.device, dtype=x.dtype)
+    quant = torch.quantile(x, q, dim=0)  # (3, D)
+
+    out = {}
+    for i in range(x.shape[1]):
+        name = dim_names[i] if dim_names is not None else f"dim{i+1}"
+        out[f"{prefix}/{name}/mean"] = mean[i].item()
+        # out[f"{prefix}/{name}/std"] = std[i].item()
+        # out[f"{prefix}/{name}/min"] = vmin[i].item()
+        # out[f"{prefix}/{name}/max"] = vmax[i].item()
+        # out[f"{prefix}/{name}/p05"] = quant[0, i].item()
+        # out[f"{prefix}/{name}/p50"] = quant[1, i].item()
+        # out[f"{prefix}/{name}/p95"] = quant[2, i].item()
+    return out
+
+def _save_histograms_png(x: torch.Tensor, title_prefix: str, dim_names, out_dir: str, step: int, bins: int):
+    """
+    Save per-dimension histograms (PNG). Uses matplotlib; call only on main process.
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    x_np = x.detach().cpu().numpy()
+    for i in range(x_np.shape[1]):
+        name = dim_names[i] if dim_names is not None else f"dim{i+1}"
+        plt.figure(figsize=(7, 4))
+        plt.hist(x_np[:, i], bins=bins, alpha=0.85)
+        plt.title(f"{title_prefix}: {name} (step={step})")
+        plt.xlabel(name)
+        plt.ylabel("count")
+        plt.tight_layout()
+        plt.savefig(os.path.join(out_dir, f"{title_prefix}_{name}_step{step}.png"))
+        plt.close()
 
 def train(args):
     # Initialize accelerator
@@ -117,6 +207,9 @@ def train(args):
     # Create dataloader
     def collate_fn(batch):
         # Process inputs
+        # remove the assistant role from the messages
+        for sample in batch:
+            sample["messages"] = [{"role": "user", "content": sample["messages"][0]["content"]}]
         messages_list = [item['messages'] for item in batch]
         texts = [tokenizer.apply_chat_template(msg, tokenize=False) for msg in messages_list]
         inputs = tokenizer(texts, padding=True, truncation=True, max_length=args.max_length, return_tensors="pt")
@@ -187,6 +280,72 @@ def train(args):
             total_loss += loss_value
             batch_losses.append(loss_value)
             global_step += 1
+
+            # Monitor per-dimension output distributions (logits / probs) and target distributions
+            if args.monitor_outputs and (global_step % args.monitor_every_n_steps == 0):
+                # Gather across processes to get a global view; compute stats only on main.
+                with torch.no_grad():
+                    gathered_logits = accelerator.gather_for_metrics(logits.detach())
+                    gathered_targets = accelerator.gather_for_metrics(targets.detach())
+
+                    if accelerator.is_main_process:
+                        # optional subsample to cap cost
+                        gathered_logits = _maybe_subsample_rows(gathered_logits, args.monitor_max_rows, seed=global_step)
+                        gathered_targets = _maybe_subsample_rows(gathered_targets, args.monitor_max_rows, seed=global_step + 1337)
+
+                        # move to cpu for stable/cheap stats
+                        gathered_logits_cpu = gathered_logits.float().cpu()
+                        gathered_targets_cpu = gathered_targets.float().cpu()
+                        gathered_probs_cpu = F.softmax(gathered_logits.float(), dim=-1).cpu()
+
+                        dim_names = [f"score{i+1}" for i in range(num_rewards)]
+
+                        dist_logs = {}
+                        # dist_logs.update(_dist_stats_per_dim(gathered_logits_cpu, "dist/logits", dim_names))
+                        dist_logs.update(_dist_stats_per_dim(gathered_probs_cpu, "dist/probs", dim_names))
+                        dist_logs.update(_dist_stats_per_dim(gathered_targets_cpu, "dist/targets", dim_names))
+
+                        # A few global summaries that help debugging collapse/peaking
+                        probs = gathered_probs_cpu.clamp_min(1e-12)
+                        entropy = (-(probs * probs.log()).sum(dim=-1)).mean().item()
+                        dist_logs["dist/probs/entropy_mean"] = entropy
+                        dist_logs["dist/probs/max_prob_mean"] = probs.max(dim=-1).values.mean().item()
+
+                        # Predicted argmax distribution (counts)
+                        pred = gathered_logits_cpu.argmax(dim=-1)
+                        counts = torch.bincount(pred, minlength=num_rewards).float()
+                        counts = counts / max(counts.sum().item(), 1.0)
+                        for i in range(num_rewards):
+                            dist_logs[f"dist/pred_argmax_frac/score{i+1}"] = counts[i].item()
+
+                        # Log to swanlab
+                        swanlab.log(
+                            {
+                                **dist_logs,
+                                "dist/step": global_step,
+                                "dist/epoch": epoch + (batch_idx + 1) / len(train_dataloader),
+                            }
+                        )
+
+                        # Optional: save histogram PNGs (disk only)
+                        if args.monitor_save_hist_png:
+                            hist_dir = args.monitor_hist_dir or os.path.join(args.output_dir, "monitor_hists")
+                            _save_histograms_png(
+                                gathered_logits_cpu,
+                                title_prefix="logits",
+                                dim_names=dim_names,
+                                out_dir=hist_dir,
+                                step=global_step,
+                                bins=args.monitor_hist_bins,
+                            )
+                            _save_histograms_png(
+                                gathered_probs_cpu,
+                                title_prefix="probs",
+                                dim_names=dim_names,
+                                out_dir=hist_dir,
+                                step=global_step,
+                                bins=args.monitor_hist_bins,
+                            )
             
             if accelerator.is_main_process:
                 progress_bar.set_postfix({'loss': loss_value})
@@ -195,17 +354,6 @@ def train(args):
                     "train/learning_rate": scheduler.get_last_lr()[0],
                     "train/epoch": epoch + (batch_idx + 1) / len(train_dataloader)
                 })
-                
-                # Plot and save the loss curve every 100 batches
-                # if global_step % 100 == 0:
-                #     plt.figure(figsize=(15, 6))
-                #     plt.plot(range(1, len(batch_losses) + 1), batch_losses)
-                #     plt.title('Training Loss Curve (per batch)')
-                #     plt.xlabel('Batch')
-                #     plt.ylabel('Loss')
-                #     plt.grid(True)
-                #     plt.savefig(os.path.join(args.output_dir, 'loss_curve.png'))
-                #     plt.close()
         
         # Calculate average loss
         accelerator.wait_for_everyone()
@@ -224,17 +372,6 @@ def train(args):
                 unwrapped_model.save_pretrained(os.path.join(args.output_dir, "best_model"))
                 tokenizer.save_pretrained(os.path.join(args.output_dir, "best_model"))
             
-    # Final plot of the complete loss curve
-    # if accelerator.is_main_process:
-    #     plt.figure(figsize=(15, 6))
-    #     plt.plot(range(1, len(batch_losses) + 1), batch_losses)
-    #     plt.title('Training Loss Curve (per batch)')
-    #     plt.xlabel('Batch')
-    #     plt.ylabel('Loss')
-    #     plt.grid(True)
-    #     plt.savefig(os.path.join(args.output_dir, 'loss_curve_final.png'))
-    #     plt.close()
-
 if __name__ == "__main__":
     args = parse_args()
     train(args)

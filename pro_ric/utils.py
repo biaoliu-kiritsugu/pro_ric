@@ -6,13 +6,64 @@ from typing import Optional
 from peft import PeftModel
 from transformers import AutoTokenizer, LlamaTokenizer, AutoModelForSequenceClassification
 import torch
+import torch.distributed as dist
 from datasets import load_dataset, Dataset, concatenate_datasets, load_from_disk, disable_caching
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import sys
-
+import swanlab
 disable_caching()
+
+
+def _swanlab_log_preference_dim_means(
+    preferences: np.ndarray,
+    num_rewards: int,
+    source: str,
+    pro_path: Optional[str] = None,
+):
+    """
+    Log mean preference per dimension to SwanLab.
+
+    NCCL-only normal path:
+    - assumes torch.distributed is initialized with NCCL backend
+    - uses CUDA tensors for all_reduce
+    - logs only on rank0
+    """
+    prefs = np.asarray(preferences, dtype=np.float32)
+    if prefs.ndim == 1:
+        prefs = prefs.reshape(1, -1)
+    if prefs.size == 0:
+        return
+
+    assert dist.is_available() and dist.is_initialized(), "torch.distributed must be initialized"
+    assert dist.get_backend() == "nccl", f"expected NCCL backend, got {dist.get_backend()}"
+    assert torch.cuda.is_available(), "CUDA must be available for NCCL all_reduce"
+
+    # Sum + count for distributed aggregation (CUDA tensors).
+    local_sum = torch.from_numpy(prefs.sum(axis=0)).to(device="cuda", dtype=torch.float32, non_blocking=True)
+    local_count = torch.tensor([prefs.shape[0]], device="cuda", dtype=torch.float32)
+
+    dist.all_reduce(local_sum, op=dist.ReduceOp.SUM)
+    dist.all_reduce(local_count, op=dist.ReduceOp.SUM)
+
+    if dist.get_rank() != 0:
+        return
+
+    denom = float(local_count.item()) if float(local_count.item()) > 0 else 1.0
+    means = (local_sum / denom).detach().cpu().numpy()
+
+    log_payload = {
+        "preference/source": source,
+        "preference/count": float(denom),
+    }
+    if pro_path is not None:
+        log_payload["preference/pro_path"] = str(pro_path)
+    for i in range(min(num_rewards, means.shape[0])):
+        log_payload[f"preference/mean/score{i+1}"] = float(means[i])
+    log_payload["preference/mean/sum"] = float(np.sum(means[:num_rewards]))
+
+    swanlab.log(log_payload)
 
 def clean_gpu_memory():
     gc.collect()
@@ -646,6 +697,13 @@ def sample_goals_from_pro(
             all_scores.append(scaled.detach().cpu())
 
     scores = torch.cat(all_scores, dim=0).numpy()
+    # scores 第一个维度的值和第三个维度的值随机交换位置
+    if scores.ndim == 2 and scores.shape[1] >= 3:
+        swap_mask = np.random.rand(scores.shape[0]) < 0.5
+        tmp = scores[swap_mask, 0].copy()
+        scores[swap_mask, 0] = scores[swap_mask, 2]
+        scores[swap_mask, 2] = tmp
+    
     del pro_model
     clean_gpu_memory()
     return np.round(scores, 1)
@@ -707,6 +765,7 @@ def reset_score_in_dataset_chat_template(
     exp_type='assistant', 
     score_temperature=0.1, 
     score_rate=10, 
+    score_shift=0,
     pro_path=None,
     tokenizer=None,
     gpu_id=0
@@ -717,10 +776,22 @@ def reset_score_in_dataset_chat_template(
             n += 1
     if pro_path is None:
         preferences = sample_goals(len(dataset), n, score_temperature, score_rate)
+        _swanlab_log_preference_dim_means(
+            preferences,
+            n,
+            source="random",
+            pro_path=None,
+        )
     else:
         print(f"Sampling goals from PRO model at {pro_path}...")
         preferences = sample_goals_from_pro(dataset, n, score_temperature, score_rate, pro_path, gpu_id)
-
+        _swanlab_log_preference_dim_means(
+            preferences,
+            n,
+            source="pro",
+            pro_path=pro_path,
+        )
+    preferences = preferences + score_shift
     if exp_type == 'assistant':
         instructions = Instructions_n(n)
     else:

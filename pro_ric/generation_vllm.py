@@ -179,8 +179,9 @@ def generate_data(
     peft_name=None,
     args=None,
     exp_type='assistant',
-    score_temperature=0.1,
+    score_temperature=1,
     score_rate=10,
+    score_shift=0,
     pro_path=None,
 ):
     set_seed(8888 + iter)
@@ -236,6 +237,7 @@ def generate_data(
         exp_type=exp_type, 
         score_temperature=score_temperature, 
         score_rate=score_rate, 
+        score_shift=score_shift,
         pro_path=pro_path,
         tokenizer=tokenizer,
         gpu_id=gpu_id
@@ -357,6 +359,8 @@ def generate_data(
         # save as json dataset
         dataset = Dataset.from_dict(evaluation_result)
         dataset.to_json(os.path.join(save_path,'data.json'))
+        # 格式化保存json数据集
+        dataset.to_json(os.path.join(save_path,'formatted_data.json'), indent=2)
         # dataset.save_to_disk(os.path.join(save_path,'data.json'))
 
         # dataframe = pd.DataFrame(evaluation_result)

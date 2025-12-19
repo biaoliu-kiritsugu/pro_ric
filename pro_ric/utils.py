@@ -13,6 +13,7 @@ import pandas as pd
 from tqdm import tqdm
 import sys
 import swanlab
+import torch.nn.functional as F
 disable_caching()
 
 
@@ -894,9 +895,9 @@ def dataset_from_json(checkpoint_path, tokenizer, exp_type='assistant', quantile
     instructions = Instructions_summary_n(num_scores) if exp_type == 'summary' else Instructions_n(num_scores)
 
     def process(sample):
-        user_content_desired_scores = sample['messages'][0]['content']
+        user_content_desired_scores = sample['message'][0]['content']
         user_content_without_score = user_content_desired_scores.split(instructions.score_splits[0])[0]
-        sample['messages'][0]['content'] = user_content_without_score.strip()
+        sample['message'][0]['content'] = user_content_without_score.strip()
         return sample
     
     generated_dataset = select_data_with_quantile(generated_dataset, quantile_threshold, num_scores)
@@ -906,7 +907,7 @@ def dataset_from_json(checkpoint_path, tokenizer, exp_type='assistant', quantile
 def merge_dataset(dataset, online_dataset, save_path, tokenizer_name, info_path=None, sample_origin=10000, exp_type='assistant', quantile_threshold=0.7):
     tokenizer = load_main_tokenizer(tokenizer_name)
     if type(dataset) == str:
-        dataset = load_from_disk(dataset)
+        dataset = load_dataset_with_message(dataset,tokenizer)
     
     ## select frontier dataset
     dataset = select_data_with_quantile(dataset, quantile_threshold)
@@ -916,10 +917,9 @@ def merge_dataset(dataset, online_dataset, save_path, tokenizer_name, info_path=
         selected_dataset = dataset.select(selected_index[:sample_origin])
     else:
         selected_dataset = dataset
-
     generated_dataset = dataset_from_json(save_path, tokenizer, exp_type=exp_type, quantile_threshold=quantile_threshold)
     # print(generated_dataset)
-    # print(generated_dataset[0])
+    # print(generated_dataset[0].keys())
     # if online_dataset is None:
     #     online_dataset = generated_dataset
     # else:
@@ -1039,3 +1039,122 @@ def add_chat_template_kwargs(example):
         example["chat_template_kwargs"] = {}
     example["chat_template_kwargs"]["enable_thinking"] = False
     return example
+def formatting_message(example,tokenizer,generate=False):
+    info_post = example["prompt"].split("### Input: ")[-1].split(" ### Response:")[0]
+    user_content = f"Generate a one-sentence summary of this post: {info_post}"
+    prompt=user_content
+    response=example["response"]
+    prompt_message=[
+        {"role": "user", "content": prompt}
+    ]
+    message=[
+        {"role": "user", "content": user_content},
+        {"role": "assistant", "content": response}
+    ]
+    T=0.5
+    scores=F.softmax(torch.stack([example["score1"],example["score2"]])/T,dim=0).tolist()
+    pref_vec=[round(s, 1) for s in scores]
+    if generate:
+        input=tokenizer.apply_chat_template(prompt_message, tokenize=False,add_generation_prompt=True,enable_thinking=False)
+    else:
+        input=tokenizer.apply_chat_template(message, tokenize=False,add_generation_prompt=False,enable_thinking=False)
+    tokenized_inputs=tokenizer(input, padding=False, truncation=True)
+    res = {
+        "prompt": prompt,
+        "prompt_message": prompt_message,
+        "response": response,
+        "message": message,
+        "pref_vec": pref_vec,
+    }
+    res.update(tokenized_inputs)
+    return res
+def load_dataset_with_message(path,tokenizer,generate=False,select=None):
+    ds = load_from_disk(path)
+    if select is not None:
+        ds=ds.select(range(select))
+    ds = ds.map(
+        lambda x: formatting_message(x,tokenizer,generate),
+        num_proc=16,
+    )
+    return ds
+def build_full_responses(prompt,scores,response):
+    input=prompt.split('Generate a one-sentence summary of this post: ')[-1]
+    return f"### Instruction: Generate a one-sentence summary of this post: ### Input: {input} <rm1_score> {round(scores[0],1)} <rm2_score> {round(scores[1],1)} ### Response: {response}"
+def build_message(prompt,response):
+    message=[
+        {"role": "user", "content": prompt},
+        {"role": "assistant", "content": response}
+    ]
+    return message
+def rebuild_dataset(example,tokenizer,generate=False):
+    for msg in example['message']:
+        if msg.get('role') == 'user':
+            prompt = msg.get('content', '')
+        if msg.get('role') == 'assistant':
+            response = msg.get('content', '')
+    message=example['message']
+    prompt_message=[
+        {"role": "user", "content": prompt}
+    ]
+    if generate:
+        input=tokenizer.apply_chat_template(prompt_message, tokenize=False,add_generation_prompt=True,enable_thinking=False)
+    else:
+        input=tokenizer.apply_chat_template(message, tokenize=False,add_generation_prompt=False,enable_thinking=False)
+    tokenized_inputs=tokenizer(input, padding=False, truncation=True)
+    res = {
+        "prompt": prompt,
+        "prompt_message": prompt_message,
+        "response": response,
+        "message": message,
+    }
+    res.update(tokenized_inputs)
+    if "pref_vec" not in example or example["pref_vec"] is None:
+        scores = torch.tensor([example["score1"], example["score2"]], dtype=torch.float32)
+        pref_vec = F.softmax(scores, dim=0).tolist()
+        res.update({"pref_vec": pref_vec})
+    return res
+def formatting_origin(example,tokenizer):
+    chosen_idx = example['choice']
+    info_post = example["info"]["post"].replace("\n", " ")
+    response = example['summaries'][chosen_idx]["text"]
+    user_content = f"Generate a one-sentence summary of this post: {info_post}"
+    prompt=user_content
+    prompt_message=[
+        {"role": "user", "content": prompt}
+    ]
+    input=tokenizer.apply_chat_template(prompt_message, tokenize=False,add_generation_prompt=True,enable_thinking=False)
+    tokenized_inputs=tokenizer(input, padding=False, truncation=True)
+    res = {
+        "prompt": prompt,
+        "prompt_message": prompt_message,
+        "response": response,
+    }
+    res.update(tokenized_inputs)
+    return res
+def remove_duplicate(duplicated_dataset):
+    duplicated_dataset = duplicated_dataset.filter(lambda x: x['info']["id"] is not None)
+    initial_list = duplicated_dataset.map(lambda x: {"id": x['info']["id"]})
+    _ , unique_indices = np.unique(initial_list["id"], return_index=True, axis=0)
+    filtered_dataset = duplicated_dataset.select(unique_indices.tolist())
+    return filtered_dataset
+def load_from_origin_dataset(tokenizer):
+    ds = load_dataset('openai/summarize_from_feedback', 'comparisons')
+    ds=ds['validation']
+    ds=ds.filter(lambda x: x["info"]['post'] is not None and 100 < len(x["info"]['post']) < 1200, batched=False, num_proc=20)
+    ds = remove_duplicate(ds)
+    ds = ds.select(range(0, min(len(ds),2000)))
+    ds = ds.map(
+        lambda x: formatting_origin(x,tokenizer),
+        num_proc=16,
+    )
+    return ds
+def freeze_base_model(model):
+    for param in model.parameters():
+        param.requires_grad = False
+    
+    trainable_params = 0
+    for name, param in model.named_parameters():
+        if "pref_mlp" in name:
+            param.requires_grad = True
+            trainable_params += param.numel()
+            print(f"解冻参数层: {name}")

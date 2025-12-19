@@ -6,16 +6,29 @@ from accelerate import Accelerator
 import torch
 from utils import clean_gpu_memory, merge_dataset, save_configs
 from training import train_model
-from generation_vllm import generate_data
+from generation import generate_data
 from transformers import HfArgumentParser
 import time
 import swanlab
+from score_classifier import ScoreClassifier
 
 # define paths for two datasets
 hhrlhf_dataset_path = 'Anthropic/hh-rlhf'
 summary_dataset_path = 'openai/summarize_from_feedback'
 
-
+def load_score_classifier(classifier_path,base_path,num_rewards,gpu_id):
+    state_dict = torch.load(classifier_path, map_location=f'cuda:{gpu_id}')
+    # Extract reward statistics
+    reward_stats = None
+    if 'reward_means' in state_dict and 'reward_stds' in state_dict:
+        reward_stats = torch.stack([state_dict['reward_means'], state_dict['reward_stds']], dim=1)
+    # Initialize classifier with the base model and reward stats
+    classifier = ScoreClassifier(base_path, num_rewards=num_rewards, reward_stats=reward_stats)
+    # Load model weights
+    filtered_state_dict = {k: v for k, v in state_dict.items() if k not in ['reward_means', 'reward_stds']}
+    classifier.load_state_dict(filtered_state_dict, strict=False)
+    classifier = classifier.to(gpu_id)
+    return classifier
 if __name__ == "__main__":
 
     @dataclass
@@ -40,7 +53,7 @@ if __name__ == "__main__":
         quantile_threshold: Optional[float] = field(default=0.7)
         num_origin_samples: Optional[int] = field(default=10000)
         max_train_samples: Optional[int] = field(default=None, metadata={"help": "maximum number of samples to train on"})
-        load_in_8bit: Optional[bool] = field(default=True, metadata={"help": "loading model in 8 bit or bfloat16"})
+        load_in_8bit: Optional[bool] = field(default=False, metadata={"help": "loading model in 8 bit or bfloat16"})
         bf16: Optional[bool] = field(default=False, 
                                     metadata={"help": "if True, training with bfloat16 (not supported by V100, but for A100, A40, A6000), otherwise we use fp32"}
                                     )
@@ -52,6 +65,8 @@ if __name__ == "__main__":
         train_dataset_path: Optional[str] = field(default='./datasets/all_full_train_harmhelp.hf')
         train_reward_stats_path: Optional[str] = field(default='')
         exp_type: Optional[str] = field(default='assistant', metadata={"help": "exp type, 'summary' or 'assistant' "})
+        classifier_path: Optional[str] = field(default='', metadata={"help": "path to the trained score classifier model"})
+        base_score_classifier_path: Optional[str] = field(default='/data/xuwenzhe/models/qwen_3_e_0.6B', metadata={"help": "path to the base score classifier model"})
 
 
     parser = HfArgumentParser(ScriptArguments)
@@ -72,13 +87,14 @@ if __name__ == "__main__":
         # Put all logs into a single swanlog dir under this experiment folder.
         swanlab_logdir = os.path.join(save_path, "swanlog")
         os.makedirs(swanlab_logdir, exist_ok=True)
+        """
         swanlab.init(
             experiment_name=script_args.wandb_name,
             description=f"PRO WIC SFT {exp_type} (offline + {script_args.num_online_iterations} online iters)",
             config=vars(script_args),
             logdir=swanlab_logdir,
         )
-
+        """
     reward_names = [x.strip() for x in script_args.reward_names.split(',')]
     reward_path_tokenizer_dict = {
         'harmless': ['Ray2333/gpt2-large-harmless-reward_model'],
@@ -109,7 +125,11 @@ if __name__ == "__main__":
     for i in range(len(reward_model_path_list)):
         save_info['reward_peft_path{}'.format(i+1)] = reward_model_path_list[i]
     save_configs(save_info, os.path.join(script_args.save_directory, script_args.wandb_name))
-
+    accelerator = Accelerator()
+    process_id = Accelerator().local_process_index
+    gpu_id = process_id
+    num_rewards=len(reward_model_path_list)
+    classifier = load_score_classifier(script_args.classifier_path,script_args.base_score_classifier_path,num_rewards,gpu_id)
     ## offline training 
     dataset = train_model(
         base_model_name=base_model_name,
@@ -127,6 +147,7 @@ if __name__ == "__main__":
         max_train_samples=script_args.max_train_samples,
         score_temperature=script_args.score_temperature,
         score_rate=script_args.score_rate,
+        
     )
     clean_gpu_memory()
 
@@ -139,7 +160,9 @@ if __name__ == "__main__":
                 continue
         checkpoint_path = os.path.join(save_path, 'model_iter{}'.format(i))
         model_path = checkpoint_path
-
+        if i > 0:
+            classifier_path=os.path.join(checkpoint_path, 'score_classifier.pt')
+            classifier = load_score_classifier(classifier_path,script_args.base_score_classifier_path,num_rewards,gpu_id)
         # ### generation
         if script_args.num_generation_samples > 0 and not os.path.exists(os.path.join(checkpoint_path, 'data.json')):
             generate_data(
@@ -154,10 +177,11 @@ if __name__ == "__main__":
                 iter=i,
                 args=script_args,
                 exp_type=exp_type,
-                score_temperature=script_args.score_temperature,
-                score_rate=script_args.score_rate,
-                score_shift=script_args.score_shift,
-                pro_path=script_args.pro_path,
+                #score_temperature=script_args.score_temperature,
+                #score_rate=script_args.score_rate,
+                #score_shift=script_args.score_shift,
+                #pro_path=script_args.pro_path,
+                score_classifier=classifier,
             )
 
         clean_gpu_memory()
@@ -184,6 +208,7 @@ if __name__ == "__main__":
             exp_type=exp_type,
             max_train_samples=script_args.max_train_samples,
             score_temperature=script_args.score_temperature,
+            score_classifier=classifier
         )
         clean_gpu_memory()
         time.sleep(30)

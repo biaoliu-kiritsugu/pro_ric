@@ -8,6 +8,9 @@ check_data.py
 process_data.py
 ric_txt2img/data/*
 ric_txt2img/experiments/
+pro_ric/logs_trl
+pro_ric/logs_trl_eval
+pro_ric/swanlog
 
 __pycache__
 *logs_*

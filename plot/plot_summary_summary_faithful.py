@@ -136,24 +136,24 @@ name2 = 'faithful'
 # Plot each method with distinct styling
 # rate 10
 # plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_rate10', 'ours_rate10')
-plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t0.5_rate10', 'ours_t0.5_rate10')
+#plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t0.5_rate10', 'ours_t0.5_rate10')
 # plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t0.7_rate10', 'ours_t0.7_rate10')
-plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t1.0_rate10', 'ours_t1.0_rate10')
+#plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t1.0_rate10', 'ours_t1.0_rate10')
 # plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t1.5_rate10', 'ours_t1.5_rate10')
 # plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t2.0_rate10', 'ours_t2.0_rate10')
 # # rate 1
-plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t0.7_rate1', 'ours_t0.7_rate1')
+#plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t0.7_rate1', 'ours_t0.7_rate1')
 # plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t1.0_rate1', 'ours_t1.0_rate1')
-plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t1.5_rate1', 'ours_t1.5_rate1')
+#plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t1.5_rate1', 'ours_t1.5_rate1')
 # plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t2.0_rate1', 'ours_t2.0_rate1')
 # rate 5
 # plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t0.7_rate5', 'ours_t0.7_rate5')
 # plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t1.0_rate5', 'ours_t1.0_rate5')
 # plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t1.5_rate5', 'ours_t1.5_rate5')
 # plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t2.0_rate5', 'ours_t2.0_rate5')
-plot_points('/data/liubiao/llm/a800_2/RiC/ric/logs_trl_eval/ric_offline_summary_pref1faithful_test', 'ric offline')
-plot_points('/data/liubiao/llm/a800_2/RiC/ric/logs_trl_eval/ric_online_summary_pref1faithful_test', 'ric online')
-# plot_points('', 'ours')
+#plot_points('/data/liubiao/llm/a800_2/RiC/ric/logs_trl_eval/ric_offline_summary_pref1faithful_test', 'ric offline')
+#plot_points('/data/liubiao/llm/a800_2/RiC/ric/logs_trl_eval/ric_online_summary_pref1faithful_test', 'ric online')
+plot_points('/data/xuwenzhe/pro_ric/pro_ric/logs_trl_eval/ours_summary_4+3_2_ric', 'ours_concat')
 
 # Improve axis labels and legend
 plt.xlabel('$R_1$ ({})'.format(name1), fontsize=12)
@@ -165,5 +165,5 @@ plt.grid(True, linestyle='--', alpha=0.3)
 
 # Adjust layout and save
 plt.tight_layout()
-plt.savefig('plot/ours_summary_{}_{}.png'.format(name1, name2), dpi=300, bbox_inches='tight')
+plt.savefig('./ours_concat_summary_{}_{}.png'.format(name1, name2), dpi=300, bbox_inches='tight')
 # plt.savefig('plot/ours_summary_{}_{}.pdf'.format(name1, name2), dpi=300, bbox_inches='tight')  # Vector format for publications

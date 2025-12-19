@@ -7,8 +7,10 @@ from transformers import TrainerCallback
 from trl import SFTTrainer, SFTConfig
 import numpy as np
 import swanlab
-from utils import Instructions_n, add_chat_template_kwargs, load_main_tokenizer, save_configs, Instructions_summary_n, print_trainable_parameters, add_score4messaegs
+from utils import Instructions_n, add_chat_template_kwargs, load_main_tokenizer, save_configs, Instructions_summary_n, print_trainable_parameters, add_score4messaegs,load_dataset_with_message,rebuild_dataset,freeze_base_model
 disable_caching()
+from PrefSFTTrainer import PrefSFTTrainer,PrefDataCollator
+import shutil
 
 
 class SwanLabUnifiedCallback(TrainerCallback):
@@ -55,6 +57,7 @@ def train_model(
     max_train_samples=None,
     score_temperature=0.1,
     score_rate=10,
+    score_classifier=None
 ):
     set_seed(8888 + iter)
     print('base model: ', base_model_name)
@@ -78,11 +81,12 @@ def train_model(
             weight_decay=0.01,
             bf16=True if args.bf16 else False,
             # Keep this stable across iterations; we unify logs at the SwanLab level.
-            run_name=args.wandb_name,
+            run_name=args.wandb_name+'_'+str(iter),
             # Disable Transformers auto-integrations to avoid creating a new SwanLab run per iteration.
-            report_to=[],
+            report_to='swanlab',
             ddp_find_unused_parameters=False,
-            max_length=4096,
+            max_seq_length=4096,
+            remove_unused_columns=False,
         )
     
     # # save training args
@@ -101,19 +105,27 @@ def train_model(
     #         task_type="CAUSAL_LM",
     #     )
     tokenizer = load_main_tokenizer(tokenizer_name)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
 
     ### load dataset when input a path
     if type(train_dataset) == str:
-        train_dataset = load_from_disk(train_dataset)
+        #train_dataset = load_from_disk(train_dataset)
+        train_dataset=load_dataset_with_message(train_dataset,tokenizer)
+    else:
+        train_dataset=train_dataset.map(lambda x:rebuild_dataset(x,tokenizer), batched=False,num_proc=20)
 
     train_dataset = train_dataset.select(range(max_train_samples)) if max_train_samples is not None else train_dataset
     num_rewards = len(reward_model_path_list)
-    dataset = train_dataset.map(lambda x: add_score4messaegs(x, num_rewards, score_temperature, score_rate), batched=False, num_proc=20)
+    #dataset = train_dataset.map(lambda x: add_score4messaegs(x, num_rewards, score_temperature, score_rate), batched=False, num_proc=20)
     # print(train_dataset[0:3])
+    dataset=train_dataset
     selected_index = np.arange(0, len(dataset))
     np.random.shuffle(selected_index)
     dataset = dataset.select(selected_index)
-    dataset = dataset.map(add_chat_template_kwargs, batched=False, num_proc=20)
+    #print(dataset[:10]['pref_vec'])
+    #dataset=dataset.select(range(100))
+    #dataset = dataset.map(add_chat_template_kwargs, batched=False, num_proc=20)
     print(f"Size of the train set: {len(dataset)}")
 
     #### training 
@@ -125,9 +137,11 @@ def train_model(
         else: # load in bf 16
             model = AutoModelForCausalLM.from_pretrained(
                 base_model_name, 
+                trust_remote_code=True, 
                 torch_dtype=torch.bfloat16, device_map=gpu_id)
 
         model.resize_token_embeddings(len(tokenizer))
+        freeze_base_model(model)
         # if peft_name is not None:
         #     model = PeftModel.from_pretrained(model, peft_name, is_trainable=True)
 
@@ -139,7 +153,7 @@ def train_model(
         # collator = DataCollatorForCompletionOnlyLM(
         #                 response_template=response_template_ids, 
         #                 tokenizer=tokenizer, mlm=False)
-
+        """
         trainer = SFTTrainer(
             model=model,
             args=training_args,
@@ -149,13 +163,29 @@ def train_model(
             # dataset_text_field="query",
             # data_collator=collator,
         )
+        """
+        data_collator = PrefDataCollator(tokenizer=tokenizer)
+        trainer = PrefSFTTrainer(
+            model=model,
+            args=training_args,
+            train_dataset=dataset,
+            data_collator=data_collator,
+            score_classifier=score_classifier
+            # peft_config=lora_config if use_lora else None,
+            # packing=False,
+            # dataset_text_field="query",
+            # data_collator=collator,
+        )
         # Log into the (single) SwanLab run initialized in main.py (if any).
-        trainer.add_callback(SwanLabUnifiedCallback(iter_id=iter, prefix="sft"))
+        #trainer.add_callback(SwanLabUnifiedCallback(iter_id=iter, prefix="sft"))
         trainer.train()
         if process_id == 0:
             print("Saving last checkpoint of the model")
-            trainer.model.save_pretrained(save_path)
+            trainer.save_model(save_path)
             tokenizer.save_pretrained(save_path)
+            shutil.copy(os.path.join(base_model_name, "modeling_pref_qwen3.py"), os.path.join(save_path, "modeling_pref_qwen3.py"))
+        if trainer.is_world_process_zero():
+            swanlab.finish()
     
     # wait for the main process
     accelerator.wait_for_everyone()

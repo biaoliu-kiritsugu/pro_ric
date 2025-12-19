@@ -11,10 +11,11 @@ from trl import set_seed
 import numpy as np
 import pandas as pd
 from utils import get_clean_data, Instructions_n, build_dataset_with_preference_n, \
-                  load_main_tokenizer, Instructions_summary_n
+                  load_main_tokenizer, Instructions_summary_n,build_full_responses
 from multi_reward_models import RewardModels
+import torch.nn.functional as F
 tqdm.pandas()
-from utils import save_configs, map_rewards_from_preference, build_summary_dataset_with_preference_n, clean_gpu_memory
+from utils import save_configs, map_rewards_from_preference, build_summary_dataset_with_preference_n, clean_gpu_memory,load_from_origin_dataset
 
 # define paths for two datasets
 hhrlhf_dataset_path = 'Anthropic/hh-rlhf'
@@ -79,15 +80,16 @@ set_seed(8888)
 tokenizer = load_main_tokenizer(tokenier_name)
 model = AutoModelForCausalLM.from_pretrained(
     base_model_name, 
+    trust_remote_code=True, 
     torch_dtype=torch.bfloat16,  # fast inference
     device_map=gpu_id, 
 )
 ############# very important for padding
 model.resize_token_embeddings(len(tokenizer))
-if len(peft_name) > 0:
-    model = PeftModel.from_pretrained(model, peft_name)
-if hasattr(model, 'merge_and_unload'):
-    model = model.merge_and_unload()
+#if len(peft_name) > 0:
+    #model = PeftModel.from_pretrained(model, peft_name)
+#if hasattr(model, 'merge_and_unload'):
+    #model = model.merge_and_unload()
 
 # load reward model
 # do not normalization for evaluation
@@ -147,12 +149,15 @@ def evaluate_model(
     if exp_type == 'assistant':
         valid_dataset = build_dataset_with_preference_n(hhrlhf_dataset_path, tokenizer, rm_tokenizers, target_rewards, split='test') 
     else:
-        valid_dataset = build_summary_dataset_with_preference_n(summary_dataset_path, tokenizer, rm_tokenizers, target_rewards, split='test') 
+        #valid_dataset = build_summary_dataset_with_preference_n(summary_dataset_path, tokenizer, rm_tokenizers, target_rewards, split='test')
+        valid_dataset=load_from_origin_dataset(tokenizer)
     print(f"Size of the validation set: {len(valid_dataset)}")
     valid_batch_size = 1
-    valid_dataset = valid_dataset.remove_columns('input_ids')
-    valid_dataset = valid_dataset.rename_column('prompt_with_score_ids', 'input_ids')
-    valid_dataset = valid_dataset.remove_columns(['prompt', 'response', 'query', 'score1', 'score2', 'prompt_with_score'])
+    #valid_dataset = valid_dataset.remove_columns('input_ids')
+    #valid_dataset = valid_dataset.rename_column('prompt_with_score_ids', 'input_ids')
+    valid_dataset = valid_dataset.add_column("sample_id", range(len(valid_dataset)))
+    origin_dataset=valid_dataset
+    valid_dataset = valid_dataset.remove_columns(['info', 'summaries', 'choice', 'worker', 'batch', 'split', 'extra', 'prompt', 'prompt_message','response'])
     for key in ['key', 'text']:
         if key in valid_dataset.column_names:
             valid_dataset = valid_dataset.remove_columns(key)
@@ -163,21 +168,37 @@ def evaluate_model(
 
     full_response_tensors = []
     full_prompts = []
+    scores=[]
+    #target_rewards=torch.tensor([target_rewards], dtype=torch.float32)
     pbar = tqdm(total=len(valid_dataset) // valid_batch_size // accelerator.num_processes)
     with torch.no_grad():
         for i, batch in enumerate(valid_data_loader):
-            response_tensors = accelerator.unwrap_model(model).generate(batch['input_ids'], **generation_kwargs)
-            full_response_tensors.extend(response_tensors)
-            full_prompts.extend(batch['input_ids'])
+            sample_ids=batch['sample_id'].detach().cpu().tolist()
+            prompts=origin_dataset[sample_ids]['prompt']
+            input_len = batch['input_ids'].shape[1]
+            response_tensors = accelerator.unwrap_model(model).generate(input_ids=batch['input_ids'], attention_mask=batch["attention_mask"],pref_vec=[target_rewards],pad_token_id=tokenizer.eos_token_id,**generation_kwargs)
+            #full_response_tensors.extend(response_tensors)
+            #full_prompts.extend(batch['input_ids'])
+            full_prompts.extend(prompts)
+            full_response_tensors.extend(response_tensors[:,input_len:])
+            scores.append(target_rewards)
             pbar.update(1)
 
-    full_prompts = tokenizer.batch_decode(full_prompts)
-    full_responses = tokenizer.batch_decode(full_response_tensors)
+    #full_prompts = tokenizer.batch_decode(full_prompts)
+    full_responses = tokenizer.batch_decode(full_response_tensors,skip_special_tokens=True)
     # clean data
-    full_prompts, full_responses = get_clean_data(full_responses, full_prompts)
-
+    #full_prompts, full_responses = get_clean_data(full_responses, full_prompts)
+    #print(full_responses)
+    for i in range(len(full_responses)):
+        clean_response=full_responses[i].replace('user\n','')
+        clean_response=clean_response.replace('<think>\n\n</think>\n','')
+        clean_response=clean_response.replace('assistant\n','')
+        full_responses[i]=clean_response
     # Compute score
+    new_full_responses = [build_full_responses(prompt,score,response) for prompt,response,score in zip(full_prompts,full_responses,scores)]
+    full_responses=new_full_responses
     queries_responses = [(instructions.get_input(text),  instructions.get_response(text)) for text in full_responses]
+    #print(queries_responses[0])
     if hasattr(instructions, 'get_post'):
         rewards_list = reward_models.get_reward_model_scores(queries_responses, instructions.get_post)
     else:
@@ -209,7 +230,10 @@ for i in range(num_rewards):
     
 for k in range(len(preferences)): 
     preference = preferences[k]
-    target_rewards = map_rewards_from_preference(rewards_reference_list, preference, method='l2').reshape(-1)
+    #target_rewards = map_rewards_from_preference(rewards_reference_list, preference, method='l2').reshape(-1)
+    #target_rewards=torch.tensor(target_rewards, dtype=torch.float32)
+    #target_rewards=F.softmax(target_rewards,dim=0).tolist()
+    target_rewards=preference
     print(k, target_rewards)
     all_rewards, all_desired_rewards, all_full_prompts, all_full_responses = evaluate_model(model, reward_models, tokenizer, target_rewards, instructions, gpu_id)
     if process_id == 0:

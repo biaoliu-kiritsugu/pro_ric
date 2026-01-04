@@ -132,6 +132,7 @@ plt.rcParams['font.size'] = 12
 
 name1 = 'summary'
 name2 = 'faithful'
+#name2 = 'deberta'
 
 # Plot each method with distinct styling
 # rate 10
@@ -153,7 +154,15 @@ name2 = 'faithful'
 # plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t2.0_rate5', 'ours_t2.0_rate5')
 #plot_points('/data/liubiao/llm/a800_2/RiC/ric/logs_trl_eval/ric_offline_summary_pref1faithful_test', 'ric offline')
 #plot_points('/data/liubiao/llm/a800_2/RiC/ric/logs_trl_eval/ric_online_summary_pref1faithful_test', 'ric online')
-plot_points('/data/xuwenzhe/pro_ric/pro_ric/logs_trl_eval/ours_summary_4+3_2_ric', 'ours_concat')
+#plot_points('/data/xuwenzhe/pro_ric/pro_ric/logs_trl_eval/ours_summary_3_add_t2', 'ours_add_t2')
+#plot_points('/data/xuwenzhe/pro_ric/pro_ric/logs_trl_eval/ours_summary_3_add', 'ours_add_2d_offline')
+#plot_points('/data/xuwenzhe/pro_ric/pro_ric/logs_trl_eval/ours_summary_online_add_3d_test', 'ours_3d_online')
+#plot_points('/data/xuwenzhe/pro_ric/pro_ric/logs_trl_eval/ours_summary_offline_add_3d_test_1+2', 'ours_3d_offline')
+#plot_points('/data/xuwenzhe/pro_ric/pro_ric/logs_trl_eval/ours_summary_online_add_3d_test', 'ours_3d_online_softmax')
+#plot_points('/data/xuwenzhe/pro_ric/pro_ric/logs_trl_eval/ours_summary_online_add_3d_sigmoid_freeze', 'ours_3d_online_sigmoid')
+#plot_points('/data/xuwenzhe/pro_ric/ric/logs_trl_eval/ric_offline_summary_pref1faithful_test', 'ric_offline')
+plot_points('/data/xuwenzhe/processed_data/rs_12', 'reward_soup')
+#plot_points('/data/xuwenzhe/RiC/ppo/logs_rewardedsoups_summary_eval/eval_pposoups_summary_faithful', 'reward_soup')
 
 # Improve axis labels and legend
 plt.xlabel('$R_1$ ({})'.format(name1), fontsize=12)
@@ -165,5 +174,8 @@ plt.grid(True, linestyle='--', alpha=0.3)
 
 # Adjust layout and save
 plt.tight_layout()
-plt.savefig('./ours_concat_summary_{}_{}.png'.format(name1, name2), dpi=300, bbox_inches='tight')
+#plt.savefig('./test_sigmoid_{}_{}.png'.format(name1, name2), dpi=300, bbox_inches='tight')
+plt.savefig('./rs_{}_{}.png'.format(name1, name2), dpi=300, bbox_inches='tight')
+#plt.savefig('./ours_add_3d_1+2_summary_{}_{}.png'.format(name1, name2), dpi=300, bbox_inches='tight')
+#plt.savefig('ric_offline.png'.format(name1, name2), dpi=300, bbox_inches='tight')
 # plt.savefig('plot/ours_summary_{}_{}.pdf'.format(name1, name2), dpi=300, bbox_inches='tight')  # Vector format for publications

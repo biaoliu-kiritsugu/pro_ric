@@ -26,7 +26,7 @@ class ScriptArguments:
     learning_rate: Optional[float] = field(default=1.4e-4, metadata={"help": "the learning rate"})
     batch_size: Optional[int] = field(default=1, metadata={"help": "the batch size"})
     gradient_accumulation_steps: Optional[int] = field(default=1, metadata={"help": "the number of gradient accumulation steps"})
-    load_in_8bit: Optional[bool] = field(default=True, metadata={"help": "loading model in 8 bit or bfloat16"})
+    load_in_8bit: Optional[bool] = field(default=False, metadata={"help": "loading model in 8 bit or bfloat16"})
     wandb_name: Optional[str] = field(default='summary_sft_all_bs1_lora64', metadata={"help": "Name for this experiment"})
     exp_type: Optional[str] = field(default='summary', metadata={"help": "exp type, 'summary' or 'assistant' "})
     base_model_name: Optional[str] = field(default="meta-llama/Llama-2-7b-hf", metadata={"help": "local path to the base model or the huggingface id"})
@@ -40,7 +40,8 @@ print('base model: ', base_model_name)
 os.makedirs(os.path.join(script_args.save_directory, script_args.wandb_name), exist_ok=True)
 
 training_args = TrainingArguments(
-        max_steps=20000,  
+        #max_steps=20000, 
+        num_train_epochs=2,
         output_dir=os.path.join(script_args.save_directory, script_args.wandb_name),
         dataloader_drop_last=True,
         eval_steps=30000,
@@ -108,7 +109,7 @@ trainer = SFTTrainer(
     model=model,
     args=training_args,
     train_dataset=train_dataset,
-    peft_config=lora_config,
+    #peft_config=lora_config,
     packing=False,
     dataset_text_field="query",
     data_collator=collator,

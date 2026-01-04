@@ -17,8 +17,8 @@ class ScoreClassifier(nn.Module):
         super().__init__()
         self.model = AutoModel.from_pretrained(model_name)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
-        #for param in self.model.parameters():
-            #param.requires_grad = False
+        for param in self.model.parameters():
+            param.requires_grad = False
         # Add a classification head
         self.classifier = nn.Sequential(
             nn.Linear(hidden_size, hidden_size),
@@ -60,6 +60,7 @@ class ScoreClassifier(nn.Module):
         # Get raw scores from the classifier head
         #raw_scores = self.classifier(pooled_output)
         scores = self.classifier(pooled_output)
+        #scores = torch.sigmoid(1.465 * scores)
         
         # Normalize scores if statistics are available
         """

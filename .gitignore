@@ -11,7 +11,9 @@ ric_txt2img/experiments/
 pro_ric/logs_trl
 pro_ric/logs_trl_eval
 pro_ric/swanlog
-
+ppo/temp_models
+ppo/wandb
+ric/swanlog
 __pycache__
 *logs_*
 datasets

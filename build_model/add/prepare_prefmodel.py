@@ -11,7 +11,8 @@ def convert_and_save(local_model_path, save_path):
     print(f"正在转换模型至 Add 架构...")
     # 1. 配置处理
     config = Qwen3Config.from_pretrained(local_model_path)
-    config.pref_dim = 2 
+    config.pref_dim = 3
+    config.tie_word_embeddings = False
     config.auto_map = {
         "AutoModelForCausalLM": "modeling_pref_qwen3.PrefQwen3ForCausalLM"
     }
@@ -23,7 +24,9 @@ def convert_and_save(local_model_path, save_path):
     # MLP 部分由于原模型没有，会触发 missing_keys，这正是我们想要的
     base_model = Qwen3ForCausalLM.from_pretrained(local_model_path)
     missing_keys, unexpected_keys = new_model.load_state_dict(base_model.state_dict(), strict=False)
-    
+    print("正在将 embed_tokens 权重复制到解耦的 lm_head...")
+    # 必须使用 clone() 确保内存独立，否则后续训练可能还会联动
+    new_model.lm_head.weight.data = new_model.model.embed_tokens.weight.data.clone()
     print(f"权重迁移完成。新增的 MLP 参数已随机初始化。")
     print(f"Missing keys (应为 mlp 相关): {[k for k in missing_keys if 'pref_mlp' in k]}")
 
@@ -38,4 +41,4 @@ def convert_and_save(local_model_path, save_path):
     print(f"模型已保存至: {save_path}")
 
 if __name__ == "__main__":
-    convert_and_save("/data/xuwenzhe/models/qwen_3_0.6B", "/data/xuwenzhe/models/qwen_3_0.6B_add")
+    convert_and_save("/data/xuwenzhe/models/qwen_3_4B", "/data/xuwenzhe/models/qwen_3_4B_add_3d+head")

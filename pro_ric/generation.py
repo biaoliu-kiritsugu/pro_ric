@@ -62,7 +62,7 @@ def generate_data(
 
     if type(dataset) == str:
         #dataset = load_from_disk(dataset)
-        dataset = load_dataset_with_message(dataset,tokenizer,generate=True)
+        dataset = load_dataset_with_message(dataset,tokenizer,generate=True,exp=exp_type)
     select_index = np.random.randint(0, len(dataset), args.num_generation_samples)
     selected_dataset = dataset.select(select_index)
     scores_name_list = []
@@ -77,7 +77,7 @@ def generate_data(
     remove_columns = []
     selected_dataset = selected_dataset.add_column("sample_id", range(len(selected_dataset)))
     origin_dataset=selected_dataset
-    for name in ['prompt_message', 'prompt', 'text', 'response', 'query', 'prompt_with_score','message'] + scores_name_list:
+    for name in ['prompt_message', 'prompt', 'text', 'response', 'query', 'prompt_with_score','message','prompt_with_score_ids','input'] + scores_name_list:
         if name in selected_dataset.column_names:
             remove_columns.append(name)
     selected_dataset = selected_dataset.remove_columns(remove_columns)
@@ -106,7 +106,8 @@ def generate_data(
             full_prompts.extend(prompts)
             full_response_tensors.extend(response_tensors[:,input_len:])
             for s in pref_vec:
-                scores.append(s.detach().cpu().tolist())
+                scores.append(s.detach().cpu().tolist())    
+            #print(tokenizer.decode(batch['input_ids'][0]))
             pbar.update(1)
 
     ## decoding
@@ -115,10 +116,10 @@ def generate_data(
     #full_prompts, full_responses = get_clean_data(full_responses, full_prompts, remove_bad=True)
     for i in range(len(full_responses)):
         clean_response=full_responses[i].replace('user\n','')
-        clean_response=clean_response.replace('<think>\n\n</think>\n','')
+        clean_response=clean_response.replace('<think>\n\n</think>\n\n','')
         clean_response=clean_response.replace('assistant\n','')
         full_responses[i]=clean_response
-    
+    #print(full_responses[0])
     ## del model and clear gpu 
     del model, data_loader
     clean_gpu_memory()
@@ -129,9 +130,10 @@ def generate_data(
         instructions = Instructions_n(reward_models.num_rewards)
     else:
         instructions = Instructions_summary_n(reward_models.num_rewards)
-    new_full_responses = [build_full_responses(prompt,score,response) for prompt,response,score in zip(full_prompts,full_responses,scores)]
-    full_responses=new_full_responses
-    queries_responses = [(instructions.get_input(text),  instructions.get_response(text)) for text in full_responses]
+    format_responses = [build_full_responses(prompt,score,response,exp='assistant') for prompt,response,score in zip(full_prompts,full_responses,scores)]
+    #full_responses=new_full_responses
+    #print(format_responses[0])
+    queries_responses = [(instructions.get_input(text),  instructions.get_response(text)) for text in format_responses]
     #print(queries_responses[0])
     if hasattr(instructions, 'get_post'):
         rewards_list = reward_models.get_reward_model_scores(queries_responses, instructions.get_post)
@@ -139,10 +141,13 @@ def generate_data(
         rewards_list = reward_models.get_reward_model_scores(queries_responses)
 
     desired_rewards_list = [[] for _ in range(reward_models.num_rewards)]
-    for text in full_responses:
-        desired_scores = instructions.get_scores(text)
-        for i in range(reward_models.num_rewards):
-            desired_rewards_list[i].append(float(desired_scores[i]))
+    for text in format_responses:
+        try:
+            desired_scores = instructions.get_scores(text)
+            for i in range(reward_models.num_rewards):
+                desired_rewards_list[i].append(float(desired_scores[i]))
+        except:
+            print(text)
 
     ### merge data
     ### error here may because of old version of transformers/accelerate/peft
@@ -155,7 +160,7 @@ def generate_data(
     all_full_responses = accelerator.gather_for_metrics(full_responses)
 
     if process_id == 0:
-        full_messages=[build_message(p,r) for p,r in zip(all_full_prompts,all_full_responses)]
+        full_messages=[build_message(p,r,exp=exp_type) for p,r in zip(all_full_prompts,all_full_responses)]
         evaluation_result = {
             'message': full_messages,
         }

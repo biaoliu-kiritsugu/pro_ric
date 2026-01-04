@@ -57,7 +57,9 @@ def train_model(
     max_train_samples=None,
     score_temperature=0.1,
     score_rate=10,
-    score_classifier=None
+    score_classifier=None,
+    freeze=False,
+    case=0
 ):
     set_seed(8888 + iter)
     print('base model: ', base_model_name)
@@ -111,9 +113,9 @@ def train_model(
     ### load dataset when input a path
     if type(train_dataset) == str:
         #train_dataset = load_from_disk(train_dataset)
-        train_dataset=load_dataset_with_message(train_dataset,tokenizer)
+        train_dataset=load_dataset_with_message(train_dataset,tokenizer,exp=exp_type)
     else:
-        train_dataset=train_dataset.map(lambda x:rebuild_dataset(x,tokenizer), batched=False,num_proc=20)
+        train_dataset=train_dataset.map(lambda x:rebuild_dataset(x,tokenizer,exp=exp_type), batched=False,num_proc=20)
 
     train_dataset = train_dataset.select(range(max_train_samples)) if max_train_samples is not None else train_dataset
     num_rewards = len(reward_model_path_list)
@@ -123,7 +125,7 @@ def train_model(
     selected_index = np.arange(0, len(dataset))
     np.random.shuffle(selected_index)
     dataset = dataset.select(selected_index)
-    #print(dataset[:10]['pref_vec'])
+    #print(dataset[-1]['pref_vec'])
     #dataset=dataset.select(range(100))
     #dataset = dataset.map(add_chat_template_kwargs, batched=False, num_proc=20)
     print(f"Size of the train set: {len(dataset)}")
@@ -141,7 +143,8 @@ def train_model(
                 torch_dtype=torch.bfloat16, device_map=gpu_id)
 
         model.resize_token_embeddings(len(tokenizer))
-        freeze_base_model(model)
+        if freeze:
+            freeze_base_model(model,case=case)
         # if peft_name is not None:
         #     model = PeftModel.from_pretrained(model, peft_name, is_trainable=True)
 
@@ -164,6 +167,7 @@ def train_model(
             # data_collator=collator,
         )
         """
+        #print(tokenizer.decode(dataset[-1]['input_ids']))
         data_collator = PrefDataCollator(tokenizer=tokenizer)
         trainer = PrefSFTTrainer(
             model=model,

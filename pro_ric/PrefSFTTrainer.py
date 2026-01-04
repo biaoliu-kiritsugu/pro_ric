@@ -100,7 +100,7 @@ class PrefSFTTrainer(SFTTrainer):
             kl_loss = F.kl_div(log_probs, target_dist, reduction="batchmean")
             
             # 合并损失
-            total_loss = sft_loss +  kl_loss
+            total_loss = sft_loss +  0.5 * kl_loss
 
         return (total_loss, outputs) if return_outputs else total_loss
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):

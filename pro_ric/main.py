@@ -131,14 +131,16 @@ if __name__ == "__main__":
     num_rewards=len(reward_model_path_list)
     classifier = load_score_classifier(script_args.classifier_path,script_args.base_score_classifier_path,num_rewards,gpu_id)
     ## offline training 
-    dataset = train_model(
+    #"""
+    dataset= train_model(
         base_model_name=base_model_name,
         reward_model_path_list=reward_model_path_list,
         train_dataset=train_dataset_path,
-        save_path=save_path + '/model_iter0',
+        save_path=save_path + '/model_iter-1',
         tokenizer_name=tokenizer_name,
         rm_tokenizer_path_list=rm_tokenizer_path_list,
-        training_epochs=script_args.training_epochs,
+        #training_epochs=script_args.training_epochs,
+        training_epochs=1,
         training_steps=script_args.training_steps if script_args.training_steps is not None else None,
         learning_rate=1.414e-4,  # use larger lr for offline training than  online training (script_args.learning_rate)
         args=script_args,
@@ -147,8 +149,31 @@ if __name__ == "__main__":
         max_train_samples=script_args.max_train_samples,
         score_temperature=script_args.score_temperature,
         score_rate=script_args.score_rate,
-        
+        freeze=True,
+        iter=-1,
+        case=2
     )
+    #"""
+    #"""
+    dataset = train_model(
+        base_model_name=save_path + '/model_iter-1',
+        reward_model_path_list=reward_model_path_list,
+        train_dataset=train_dataset_path,
+        save_path=save_path + '/model_iter0',
+        tokenizer_name=tokenizer_name,
+        rm_tokenizer_path_list=rm_tokenizer_path_list,
+        training_epochs=script_args.training_epochs-1,
+        training_steps=script_args.training_steps if script_args.training_steps is not None else None,
+        learning_rate=1.414e-4,  # use larger lr for offline training than  online training (script_args.learning_rate)
+        args=script_args,
+        exp_type=exp_type,
+        use_lora=False,
+        max_train_samples=script_args.max_train_samples,
+        score_temperature=script_args.score_temperature,
+        score_rate=script_args.score_rate,
+        freeze=True
+    )
+    #"""
     clean_gpu_memory()
 
     online_dataset = None
@@ -170,7 +195,8 @@ if __name__ == "__main__":
                 reward_model_path_list=reward_model_path_list,
                 tokenizer_name=tokenizer_name,
                 rm_tokenizer_path_list=rm_tokenizer_path_list,
-                dataset=dataset,
+                #dataset=dataset,
+                dataset=train_dataset_path,
                 save_path=os.path.join(save_path, 'model_iter{}'.format(i)),
                 # peft_name=peft_name,
                 reward_stats_path=reward_stats_path,
@@ -182,6 +208,8 @@ if __name__ == "__main__":
                 #score_shift=script_args.score_shift,
                 #pro_path=script_args.pro_path,
                 score_classifier=classifier,
+                #batch_size=script_args.batch_size,
+                batch_size=4
             )
 
         clean_gpu_memory()
@@ -190,7 +218,7 @@ if __name__ == "__main__":
         merged_data, online_dataset = merge_dataset(dataset, online_dataset, checkpoint_path, tokenizer_name, 
                                                     info_path=info_path, exp_type=exp_type, quantile_threshold=script_args.quantile_threshold,
                                                     sample_origin=script_args.num_origin_samples)
-
+        #merged_data.save_to_disk('/data/xuwenzhe/merged_dataset_'+str(i))
         train_model(
             base_model_name=model_path,
             # peft_name=peft_name,
@@ -208,7 +236,8 @@ if __name__ == "__main__":
             exp_type=exp_type,
             max_train_samples=script_args.max_train_samples,
             score_temperature=script_args.score_temperature,
-            score_classifier=classifier
+            score_classifier=classifier,
+            freeze=True
         )
         clean_gpu_memory()
         time.sleep(30)

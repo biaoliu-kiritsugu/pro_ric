@@ -21,7 +21,7 @@ else:
     instructions = Instructions_summary_n(script_args.num_objects)
     dataset = load_from_disk(script_args.dataset_path)
 
-dataset = dataset.select(range(10))
+#dataset = dataset.select(range(10))
 
 def add_messages(sample):
     """

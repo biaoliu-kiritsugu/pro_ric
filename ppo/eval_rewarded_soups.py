@@ -21,7 +21,7 @@ tqdm.pandas()
 # define paths for two datasets
 hhrlhf_dataset_path = 'Anthropic/hh-rlhf'
 summary_dataset_path = 'openai/summarize_from_feedback'
-tokenizer_path = 'meta-llama/Llama-2-7b-hf'
+tokenizer_path = '/data/xuwenzhe/RiC/sft/logs_trl/sft/model'
 
 @dataclass
 class ScriptArguments:

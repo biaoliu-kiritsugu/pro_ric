@@ -14,6 +14,7 @@ from tqdm import tqdm
 import sys
 import swanlab
 import torch.nn.functional as F
+import re
 disable_caching()
 
 
@@ -1052,7 +1053,15 @@ def formatting_message(example,tokenizer,generate=False):
         {"role": "assistant", "content": response}
     ]
     T=0.5
-    scores=F.softmax(torch.stack([example["score1"],example["score2"]])/T,dim=0).tolist()
+    k=1.465
+    if 'score3' in example.keys():
+        scores=F.softmax(torch.stack([example["score1"],example["score2"],example["score3"]])/T,dim=0).tolist()
+        #scores=torch.stack([example["score1"],example["score2"],example["score3"]])
+        #scores=torch.sigmoid(k*scores).tolist()
+    else:
+        scores=F.softmax(torch.stack([example["score1"],example["score2"]])/T,dim=0).tolist()
+        #scores=torch.stack(torch.stack([example["score1"],example["score2"]]))
+        #scores=torch.sigmoid(k*scores).tolist()
     pref_vec=[round(s, 1) for s in scores]
     if generate:
         input=tokenizer.apply_chat_template(prompt_message, tokenize=False,add_generation_prompt=True,enable_thinking=False)
@@ -1061,38 +1070,122 @@ def formatting_message(example,tokenizer,generate=False):
     tokenized_inputs=tokenizer(input, padding=False, truncation=True)
     res = {
         "prompt": prompt,
-        "prompt_message": prompt_message,
+        #"prompt_message": prompt_message,
         "response": response,
         "message": message,
         "pref_vec": pref_vec,
     }
     res.update(tokenized_inputs)
     return res
-def load_dataset_with_message(path,tokenizer,generate=False,select=None):
+def formatting_message_a(example,tokenizer,generate=False):
+    clean_text = re.sub(r'<rm\d+_score>\s*[\d.-]+', '', example["prompt"])
+    prompt=clean_text
+    parts = re.split(r'(Human:|Assistant:)', clean_text.strip())
+    message = []
+    for i in range(1, len(parts), 2):
+        role_marker = parts[i].strip()
+        content = parts[i+1].strip()
+        if not content:
+            continue 
+        role = "user" if role_marker == "Human:" else "assistant"
+        message.append({"role": role, "content": content})
+    response=example["response"]
+    if not generate:
+        message.append({"role": "assistant", "content": response})
+    T=0.5
+    if 'score3' in example.keys():
+        scores=F.softmax(torch.stack([example["score1"],example["score2"],example["score3"]])/T,dim=0).tolist()
+    else:
+        scores=F.softmax(torch.stack([example["score1"],example["score2"]])/T,dim=0).tolist()
+    pref_vec=[round(s, 1) for s in scores]
+    if generate:
+        input=tokenizer.apply_chat_template(message, tokenize=False,add_generation_prompt=True,enable_thinking=False)
+    else:
+        input=tokenizer.apply_chat_template(message, tokenize=False,add_generation_prompt=False,enable_thinking=False)
+    tokenized_inputs=tokenizer(input, padding=False, truncation=True)
+    res = {
+        "prompt": prompt,
+        "response": response,
+        "message": message,
+        "pref_vec": pref_vec,
+        #"input":input
+    }
+    res.update(tokenized_inputs)
+    return res
+def load_dataset_with_message(path,tokenizer,generate=False,select=None,exp='summary'):
     ds = load_from_disk(path)
     if select is not None:
         ds=ds.select(range(select))
-    ds = ds.map(
-        lambda x: formatting_message(x,tokenizer,generate),
-        num_proc=16,
-    )
+    if exp=='summary':
+        ds = ds.map(
+            lambda x: formatting_message(x,tokenizer,generate),
+            num_proc=16,
+        )
+    elif exp=='assistant':
+        ds = ds.map(
+            lambda x: formatting_message_a(x,tokenizer,generate),
+            num_proc=16,
+        )
+    else:
+        raise(TypeError('数据集种类错误'))
     return ds
-def build_full_responses(prompt,scores,response):
-    input=prompt.split('Generate a one-sentence summary of this post: ')[-1]
-    return f"### Instruction: Generate a one-sentence summary of this post: ### Input: {input} <rm1_score> {round(scores[0],1)} <rm2_score> {round(scores[1],1)} ### Response: {response}"
-def build_message(prompt,response):
-    message=[
-        {"role": "user", "content": prompt},
-        {"role": "assistant", "content": response}
-    ]
+def build_full_responses(prompt,scores,response,exp='summary'):
+    if exp=='summary':
+        input=prompt.split('Generate a one-sentence summary of this post: ')[-1]
+        if len(scores)==2:
+            return f"### Instruction: Generate a one-sentence summary of this post: ### Input: {input} <rm1_score> {round(scores[0],1)} <rm2_score> {round(scores[1],1)} ### Response: {response}"
+        else:
+            return f"### Instruction: Generate a one-sentence summary of this post: ### Input: {input} <rm1_score> {round(scores[0],1)} <rm2_score> {round(scores[1],1)} <rm3_score> {round(scores[2],1)} ### Response: {response}"
+    elif exp=='assistant':
+        prompt=prompt.rsplit('\n\nAssistant:', 1)[0]
+        if len(scores)==2:
+            return f"{prompt} <rm1_score> {round(scores[0],1)} <rm2_score> {round(scores[1],1)} \n\nAssistant: {response}"
+        else:
+            return f"{prompt} <rm1_score> {round(scores[0],1)} <rm2_score> {round(scores[1],1)} <rm3_score> {round(scores[2],1)} \n\nAssistant: {response}"
+    else:
+        raise(TypeError('数据集种类错误'))
+def build_message(prompt,response,exp='summary'):
+    if exp=='summary':
+        message=[
+            {"role": "user", "content": prompt},
+            {"role": "assistant", "content": response}
+        ]
+    elif exp=='assistant':
+        parts = re.split(r'(Human:|Assistant:)', prompt)
+        message = []
+        for i in range(1, len(parts), 2):
+            role_marker = parts[i].strip()
+            content = parts[i+1].strip()
+            if not content:
+                continue 
+            role = "user" if role_marker == "Human:" else "assistant"
+            message.append({"role": role, "content": content})
+            message.append({"role": "assistant", "content": response})
+    else:
+        raise(TypeError('数据集种类错误'))
     return message
-def rebuild_dataset(example,tokenizer,generate=False):
-    for msg in example['message']:
-        if msg.get('role') == 'user':
-            prompt = msg.get('content', '')
-        if msg.get('role') == 'assistant':
-            response = msg.get('content', '')
+def rebuild_dataset(example,tokenizer,generate=False,exp='summary'):
     message=example['message']
+    if exp == 'summary':
+        for msg in message:
+            if msg.get('role') == 'user':
+                prompt = msg.get('content', '')
+            if msg.get('role') == 'assistant':
+                response = msg.get('content', '')
+    elif exp == 'assistant':
+        if len(message) > 0 and message[-1]['role'] == 'assistant':
+            response = message[-1]['content']
+            prompt_history = message[:-1]
+        else:
+            response = ""
+            prompt_history = message
+        hh_prompt = ""
+        for msg in prompt_history:
+            role = "Human" if msg['role'] == 'user' else "Assistant"
+            hh_prompt += f"\n\n{role}: {msg['content']}"
+        prompt = hh_prompt + "\n\nAssistant:"
+    else:
+        raise(TypeError('数据集种类错误'))
     prompt_message=[
         {"role": "user", "content": prompt}
     ]
@@ -1103,15 +1196,23 @@ def rebuild_dataset(example,tokenizer,generate=False):
     tokenized_inputs=tokenizer(input, padding=False, truncation=True)
     res = {
         "prompt": prompt,
-        "prompt_message": prompt_message,
+        #"prompt_message": prompt_message,
         "response": response,
         "message": message,
+        #"input":input
     }
     res.update(tokenized_inputs)
+    T=0.5
     if "pref_vec" not in example or example["pref_vec"] is None:
-        scores = torch.tensor([example["score1"], example["score2"]], dtype=torch.float32)
-        pref_vec = F.softmax(scores, dim=0).tolist()
-        res.update({"pref_vec": pref_vec})
+        if "score3" in example:
+            scores = torch.tensor([example["score1"], example["score2"], example["score3"]], dtype=torch.float32)
+        else:
+            scores = torch.tensor([example["score1"], example["score2"]], dtype=torch.float32)
+        pref_vec = F.softmax(scores/T, dim=0).tolist()
+    else:
+        pref_vec=example['pref_vec']
+        #pref_vec = torch.sigmoid(1.465*scores).tolist()
+    res.update({"pref_vec": pref_vec})
     return res
 def formatting_origin(example,tokenizer):
     chosen_idx = example['choice']
@@ -1126,7 +1227,28 @@ def formatting_origin(example,tokenizer):
     tokenized_inputs=tokenizer(input, padding=False, truncation=True)
     res = {
         "prompt": prompt,
-        "prompt_message": prompt_message,
+        #"prompt_message": prompt_message,
+        "response": response,
+    }
+    res.update(tokenized_inputs)
+    return res
+def formatting_origin_a(example,tokenizer):
+    text=example['chosen']
+    prompt = text.rsplit("\n\nAssistant:", 1)[0]+'\n\nAssistant:'
+    response = text.rsplit("\n\nAssistant:", 1)[-1]
+    parts = re.split(r'(Human:|Assistant:)', prompt)
+    message = []
+    for i in range(1, len(parts), 2):
+        role_marker = parts[i].strip()
+        content = parts[i+1].strip()
+        if not content:
+            continue 
+        role = "user" if role_marker == "Human:" else "assistant"
+        message.append({"role": role, "content": content})
+    input=tokenizer.apply_chat_template(message, tokenize=False,add_generation_prompt=True,enable_thinking=False)
+    tokenized_inputs=tokenizer(input, padding=False, truncation=True)
+    res = {
+        "prompt": prompt,
         "response": response,
     }
     res.update(tokenized_inputs)
@@ -1137,24 +1259,45 @@ def remove_duplicate(duplicated_dataset):
     _ , unique_indices = np.unique(initial_list["id"], return_index=True, axis=0)
     filtered_dataset = duplicated_dataset.select(unique_indices.tolist())
     return filtered_dataset
-def load_from_origin_dataset(tokenizer):
-    ds = load_dataset('openai/summarize_from_feedback', 'comparisons')
-    ds=ds['validation']
-    ds=ds.filter(lambda x: x["info"]['post'] is not None and 100 < len(x["info"]['post']) < 1200, batched=False, num_proc=20)
-    ds = remove_duplicate(ds)
-    ds = ds.select(range(0, min(len(ds),2000)))
-    ds = ds.map(
-        lambda x: formatting_origin(x,tokenizer),
-        num_proc=16,
-    )
+def load_from_origin_dataset(tokenizer,exp='summary'):
+    if exp=='summary':
+        ds = load_dataset('openai/summarize_from_feedback', 'comparisons')
+        ds=ds['validation']
+        ds=ds.filter(lambda x: x["info"]['post'] is not None and 100 < len(x["info"]['post']) < 1200, batched=False, num_proc=20)
+        ds = remove_duplicate(ds)
+        ds = ds.select(range(0, min(len(ds),2000)))
+        ds = ds.map(
+            lambda x: formatting_origin(x,tokenizer),
+            num_proc=16,
+        )
+    elif exp=='assistant':
+        ds=load_dataset('Anthropic/hh-rlhf')['test']
+        ds = ds.select(range(0, min(len(ds),2000)))
+        ds = ds.map(
+            lambda x: formatting_origin_a(x,tokenizer),
+            num_proc=16,
+        )
     return ds
-def freeze_base_model(model):
+def freeze_base_model(model,case=0):
     for param in model.parameters():
         param.requires_grad = False
     
     trainable_params = 0
     for name, param in model.named_parameters():
-        if "pref_mlp" in name:
-            param.requires_grad = True
-            trainable_params += param.numel()
-            print(f"解冻参数层: {name}")
+        if case==0:
+            if "pref_mlp" in name:
+                param.requires_grad = True
+                trainable_params += param.numel()
+                print(f"解冻参数层: {name}")
+        elif case==1:
+            if "pref_mlp" in name or "embed_tokens" in name:
+                param.requires_grad = True
+                trainable_params += param.numel()
+                print(f"解冻参数层: {name}")
+        elif case==2:
+        #if "pref_mlp" in name or "embed_tokens" in name:
+        #if "pref_mlp" in name:
+            if "pref_mlp" in name or "lm_head" in name:
+                param.requires_grad = True
+                trainable_params += param.numel()
+                print(f"解冻参数层: {name}")

@@ -1,4 +1,4 @@
-export SWANLAB_API_KEY="rpxuDFlpEUHJjd1zR41yl"
+export SWANLAB_API_KEY=
 export SWANLAB_PROJ_NAME="add_ric"
 CUDA_VISIBLE_DEVICES=0,1,2,3 accelerate launch main.py \
     --train_dataset_path '/data/xuwenzhe/RiC/ric/datasets/assistant_all.hf' \

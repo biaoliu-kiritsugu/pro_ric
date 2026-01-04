@@ -1,4 +1,4 @@
-export WANDB_API_KEY=c41332624f6064acf85bcbb3b356a98165424329
+export WANDB_API_KEY=
 CUDA_VISIBLE_DEVICES=4,5,6,7 accelerate launch ppo.py \
     --reward_name 'deberta' \
     --base_model_name '/data/xuwenzhe/pro_ric/sft/logs_trl/sft/model' \

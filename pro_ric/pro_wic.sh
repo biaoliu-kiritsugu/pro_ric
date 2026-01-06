@@ -66,27 +66,27 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3
 #     --reward_names 'summary,faithful,deberta' \
 #     --exp_type 'summary' \
 
-# accelerate launch main.py \
-#     --base_model_name 'Qwen/Qwen3-0.6B' \
-#     --train_dataset_path './datasets/summary_pref1faithfuldeberta_messages.hf' \
-#     --save_directory './logs_pro_test/' \
-#     --learning_rate 1e-4 \
-#     --batch_size 8 \
-#     --training_epochs 0 \
-#     --score_temperature 0.5 \
-#     --score_rate 10 \
-#     --pro_path ./pro/pro_summary \
-#     --online_training_epochs 1 \
-#     --num_online_iterations 2 \
-#     --num_generation_samples 64 \
-#     --num_origin_samples 0 \
-#     --max_train_samples 64 \
-#     --load_in_8bit False \
-#     --bf16 True \
-#     --use_lora False \
-#     --wandb_name 'test_summary_pref1faithfuldeberta_online_pro_t0.5_rate10_gen_60000_iter2' \
-#     --reward_names 'summary,faithful,deberta' \
-#     --exp_type 'summary' \
+accelerate launch main.py \
+    --base_model_name 'Qwen/Qwen3-0.6B' \
+    --train_dataset_path './datasets/summary_pref1faithfuldeberta_messages.hf' \
+    --save_directory './logs_pro_test/' \
+    --learning_rate 1e-4 \
+    --batch_size 8 \
+    --training_epochs 1 \
+    --score_temperature 0.5 \
+    --score_rate 10 \
+    --pro_path ./pro/pro_summary \
+    --online_training_epochs 1 \
+    --num_online_iterations 2 \
+    --num_generation_samples 64 \
+    --num_origin_samples 0 \
+    --max_train_samples 64 \
+    --load_in_8bit False \
+    --bf16 True \
+    --use_lora False \
+    --wandb_name 'test_summary_pref1faithfuldeberta_online_pro_t0.5_rate10_gen_60000_iter4' \
+    --reward_names 'summary,faithful,deberta' \
+    --exp_type 'summary' \
 
 # # summary and faithful rewards
 # offline

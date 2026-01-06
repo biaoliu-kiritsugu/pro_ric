@@ -106,7 +106,7 @@ tokenizer.padding_side = "left"
 # Here we just use 0.
 gpu_id = 0 
 print("Loading Reward Models...")
-reward_models = RewardModels(reward_model_path_list, rm_tokenizer_path_list, gpu_id, reward_stats_path)
+reward_models = RewardModels(reward_model_path_list, rm_tokenizer_path_list, gpu_id, reward_stats_path, active_reward_indices)
 num_rewards = len(reward_model_path_list)
 total_dims = 3
 instructions = Instructions_n(total_dims) if exp_type == 'assistant' else Instructions_summary_n(total_dims)

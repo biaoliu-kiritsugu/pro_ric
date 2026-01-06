@@ -4,21 +4,36 @@ import matplotlib.pyplot as plt
 import os
 import glob2 
 import seaborn as sns 
-
+import random
 # Set up a professional color palette (using seaborn's deep palette)
 colors = sns.color_palette('deep')  # Good for colorblind viewers
 # Alternatively, use a more distinct palette:
 # colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
 
 # Define distinct marker styles for each method
-algorithms = ['ric offline', 'ric online', 'reward soups', 'ours_offline', 'ours_online']
-marker_styles = [
-    ('o', '--'),  # circle with dashed line
-    ('s', '-.'),  # square with dash-dot line
-    ('^', ':'),   # triangle with dotted line
-    ('D', '-'),   # diamond with solid line
-    ('p', ':'),
-]
+# algorithms = ['ric offline', 'ric online', 'reward soups', 'ours_offline', 'ours_online']
+algorithms = []
+# marker_styles = [
+#     ('o', '--'),  # circle with dashed line
+#     ('s', '-.'),  # square with dash-dot line
+#     ('^', ':'),   # triangle with dotted line
+#     ('D', '-'),   # diamond with solid line
+#     ('p', ':'),   # pentagon with dotted line
+#     ('*', '-'),   # star with solid line
+#     ('v', '--'),  # triangle down with dashed line
+#     ('X', '-.'),  # filled x with dash-dot line
+#     ('h', ':'),   # hexagon with dotted line
+#     ('8', '-'),   # octagon with solid line
+# ]
+# '*', 'v', 'X', 'h', '8'
+marker_styles = []
+markers = ['o', 's', '^', 'D', 'p']
+linestyles = ['--', '-.', ':', '-', ':', '-', '--', '-.', ':', '-']
+for marker in markers:
+    for linestyle in linestyles:
+        marker_styles.append((marker, linestyle))
+random.shuffle(marker_styles)
+
 
 # Line widths and marker sizes
 linewidth = 2
@@ -86,8 +101,10 @@ def plot_points(dir, label, shift=[0,0], txt_color='black', normalize_path=None,
         marker, linestyle = marker_styles[idx]
         color = colors[idx]
     else:
-        marker, linestyle = ('o', '-')
-        color = 'black'
+        algorithms.append(label)
+        idx = algorithms.index(label)
+        marker, linestyle = marker_styles[idx]
+        color = colors[idx]
 
     # Plot the points with consistent styling
     plt.scatter(obtained_scores[:, 0] + shift[0], obtained_scores[:, 1] + shift[1], 
@@ -117,7 +134,8 @@ name1 = 'summary'
 name2 = 'deberta'
 
 # Plot each method with distinct styling
-plot_points('/data/liubiao/llm/a800_2/RiC/ric/logs_trl_eval/ric_offline_summary_pref1deberta_test', 'ours_offline')
+plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval_final/ric_offline_summary_pref1deberta_pro_t0.5_rate10', 'ours offline')
+plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval_final/pro_online_summary_pref1deberta_pro_t0.5_rate10_gen60000_shift2_iter4', 'ours online iter4')
 plot_points('/data/liubiao/llm/a800_2/RiC/ric/logs_trl_eval/ric_offline_summary_pref1deberta_test', 'ric offline')
 plot_points('/data/liubiao/llm/a800_2/RiC/ric/logs_trl_eval/ric_online_summary_pref1deberta_test', 'ric online')
 # plot_points('', 'ours')

@@ -5,12 +5,16 @@ import pandas as pd
 from utils import load_reward_model, get_rewards
 
 class RewardModels():
-    def __init__(self, reward_model_path_list, rm_tokenizer_path_list, gpu_id_list, reward_stats_path=None):
+    def __init__(self, reward_model_path_list, rm_tokenizer_path_list, gpu_id_list, reward_stats_path=None, reward_indices=None):
         assert len(reward_model_path_list) == len(rm_tokenizer_path_list)
         self.reward_model_path_list = reward_model_path_list
         self.rm_tokenizer_path_list = rm_tokenizer_path_list
         self.num_rewards = len(reward_model_path_list)
-        self.reward_stats = np.load(reward_stats_path) if reward_stats_path is not None else None
+        # self.reward_stats = np.load(reward_stats_path) if reward_stats_path is not None else None
+        if reward_indices is not None:  
+            self.reward_stats = np.load(reward_stats_path)[reward_indices]
+        else:
+            self.reward_stats = np.load(reward_stats_path) if reward_stats_path is not None else None
         self.reward_models = []
         self.rm_tokenizers = []
         if type(gpu_id_list) != list:

@@ -91,6 +91,9 @@ def plot_points(dir, label, shift=[0,0], txt_color='black', normalize_path=None,
 
     if normalize_path is not None:
         norm_info = np.load(normalize_path)
+        print(norm_info)
+        # 取前两行数据
+        norm_info = norm_info[:2, :]
         norm_info = np.array(norm_info).reshape(2, 2)
         for i in range(2):
             obtained_scores[:, i] = (obtained_scores[:, i] - norm_info[i][0]) / norm_info[i][1] 
@@ -126,6 +129,7 @@ def plot_points(dir, label, shift=[0,0], txt_color='black', normalize_path=None,
             label=label, markeredgecolor='k', markeredgewidth=0.5)
 
 # Create figure with improved settings
+# plt.figure(figsize=(5, 4))
 plt.figure(figsize=(8, 6))
 plt.rcParams['font.family'] = 'serif'  # Use serif fonts for publications
 plt.rcParams['font.size'] = 12
@@ -136,23 +140,38 @@ name2 = 'faithful'
 # Plot each method with distinct styling
 # rate 10
 # plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_rate10', 'ours_rate10')
-plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t0.5_rate10', 'ours_t0.5_rate10')
+# plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t0.5_rate10', 'ours_t0.5_rate10')
 # plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t0.7_rate10', 'ours_t0.7_rate10')
-plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t1.0_rate10', 'ours_t1.0_rate10')
+# plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t1.0_rate10', 'ours_t1.0_rate10')
 # plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t1.5_rate10', 'ours_t1.5_rate10')
 # plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t2.0_rate10', 'ours_t2.0_rate10')
 # # rate 1
-plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t0.7_rate1', 'ours_t0.7_rate1')
+# plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t0.7_rate1', 'ours_t0.7_rate1')
 # plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t1.0_rate1', 'ours_t1.0_rate1')
-plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t1.5_rate1', 'ours_t1.5_rate1')
+# plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t1.5_rate1', 'ours_t1.5_rate1')
 # plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t2.0_rate1', 'ours_t2.0_rate1')
 # rate 5
 # plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t0.7_rate5', 'ours_t0.7_rate5')
 # plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t1.0_rate5', 'ours_t1.0_rate5')
 # plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t1.5_rate5', 'ours_t1.5_rate5')
 # plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval/ric_offline_summary_pref1faithful_pro_t2.0_rate5', 'ours_t2.0_rate5')
-plot_points('/data/liubiao/llm/a800_2/RiC/ric/logs_trl_eval/ric_offline_summary_pref1faithful_test', 'ric offline')
-plot_points('/data/liubiao/llm/a800_2/RiC/ric/logs_trl_eval/ric_online_summary_pref1faithful_test', 'ric online')
+
+plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/wic_logs/logs_trl_eval_final/ric_offline_summary_pref1faithful_pro_t0.5_rate10', 'PRO-WIC offline')
+plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval_final/pro_online_summary_pref1faithful_pro_t0.5_rate10_gen60000_iter4', 'PRO-WIC online')
+# plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval_final/ric_online_summary_pref1faithful_pro_t0.5_rate10_iter1', 'ours online iter1')
+# plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval_final/test/ric_online_summary_pref1faithful_pro_t0.5_rate10_gen_60000_iter4_iter2', 'ours online iter2')
+# plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval_final/test/ric_online_summary_pref1faithful_pro_t0.5_rate10_gen_60000_iter4_iter3', 'ours online iter3')
+# plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/wic_logs/logs_trl_eval_final/ric_online_summary_pref1faithful_pro_t0.5_rate10_gen_60000_iter4_iter4', 'wic online iter4')
+# plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval_final/ric_online_summary_pref1faithful_pro_t0.5_rate10_gen_60000_iter4_iter8', 'ours online iter8')
+# plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval_final/pro_online_summary_pref1faithful_pro_t0.5_rate10_gen60000_shift2_iter4', 'ours online iter4 shift2')
+# plot_points('/data/liubiao/llm/a800_2/RiC/pro_ric/logs_trl_eval_final/pro_online_summary_pref1faithful_pro_t0.5_rate10_gen60000_shift2_iter4_evalshift200', 'ours online iter4 shift2 evalshift200')
+plot_points('/data/liubiao/llm/a800_2/RiC/ppo/logs/eval_pposoups_summary_faithful', 'Reward Soups', shift=[-0., 0])
+plot_points('/data/liubiao/llm/a800_2/RiC/ppo/logs/eval_morlhf', 'MORLHF', shift=[-0., 0])
+plot_points('/data/liubiao/llm/a800_2/RiC/ppo/logs/cpo_summary_faithful', 'CPO', normalize_path='/data/liubiao/llm/a800_2/RiC/ric/datasets/summary_pref1faithfuldeberta.hf/all_reward_stat.npy')
+plot_points('/data/liubiao/llm/a800_2/RiC/ric/logs_trl_eval/ric_offline_summary_pref1faithful_test', 'ric offline', shift=[-0.5, 0])
+# plot_points('/data/liubiao/llm/a800_2/RiC/ppo/logs/meta_offline', 'Meta offline')
+# plot_points('/data/liubiao/llm/a800_2/RiC/ppo/logs/meta_online2', 'Meta online')
+plot_points('/data/liubiao/llm/a800_2/RiC/ric/logs_trl_eval/ric_online_summary_pref1faithful_test', 'RIC online', shift=[-0.5, -0.2])
 # plot_points('', 'ours')
 
 # Improve axis labels and legend

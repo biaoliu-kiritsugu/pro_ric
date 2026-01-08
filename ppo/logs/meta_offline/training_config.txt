@@ -1,5 +1,0 @@
-base_model_name : ./logs_trl/ours_summary_3_add/model_iter0
-peft_name : 
-tokenier_name : ./logs_trl/ours_summary_3_add/model_iter0
-reward_peft_path1 : Tristan/gpt2_reward_summarization
-reward_peft_path2 : CogComp/bart-faithful-summary-detector

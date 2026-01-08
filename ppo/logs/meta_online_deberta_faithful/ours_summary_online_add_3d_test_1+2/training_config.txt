@@ -1,5 +1,0 @@
-base_model_name : ./logs_trl/ours_summary_online_add_3d_test/model_iter2
-peft_name : 
-tokenier_name : ./logs_trl/ours_summary_online_add_3d_test/model_iter2
-reward_peft_path1 : CogComp/bart-faithful-summary-detector
-reward_peft_path2 : OpenAssistant/reward-model-deberta-v3-large-v2

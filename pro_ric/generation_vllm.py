@@ -232,6 +232,8 @@ def generate_data(
     
     local_dataset = selected_dataset.shard(num_shards=accelerator.num_processes, index=process_id)
     # print(local_dataset[0])
+    # sys.exit()
+
     local_dataset = reset_score_in_dataset_chat_template(
         local_dataset, 
         exp_type=exp_type, 
@@ -250,6 +252,7 @@ def generate_data(
     local_dataset = local_dataset.remove_columns(remove_columns)
     local_dataset = local_dataset.rename_column('messages_prompt_reset_score', 'messages')
     # print(local_dataset[0])
+    # sys.exit()
 
     # if len(local_dataset) > 0:
     local_messages = local_dataset['messages']
@@ -313,9 +316,12 @@ def generate_data(
     reward_models = RewardModels(reward_model_path_list, rm_tokenizer_path_list, gpu_id, reward_stats_path)
     instructions = Instructions_summary_n(reward_models.num_rewards) if exp_type == 'summary' else Instructions_n(reward_models.num_rewards)
     full_local_responses = [instructions.get_full_response(message[0]['content'], assistant_content) for message, assistant_content in zip(local_messages, local_responses)]
+    # print("------full_local_responses------")
     # print(full_local_responses[0])
     queries_responses = [(instructions.get_input(text),  instructions.get_response(text)) for text in full_local_responses]
+    # print("------queries_responses------")
     # print(queries_responses[0])
+    # sys.exit()
 
     if hasattr(instructions, 'get_post'):
         rewards_list = reward_models.get_reward_model_scores(queries_responses, instructions.get_post)
@@ -337,13 +343,19 @@ def generate_data(
         all_desired_rewards.append(accelerator.gather_for_metrics(desired_rewards_list[i]))
     all_full_messages = accelerator.gather_for_metrics(local_messages)
     all_full_responses = accelerator.gather_for_metrics(local_responses)
+    # print("------all_full_messages------")
     # print(all_full_messages[0])
+    # print("------all_full_responses------")
     # print(all_full_responses[0])
     # sys.exit()
     all_messages_with_responses = [
-        message + [{"role": "assistant", "content": response}] for message, response in zip(all_full_messages, all_full_responses)
+        [{"role": "user", "content": instructions.get_input(message[0]['content'])}] 
+        + [{"role": "assistant", "content": response}] 
+        for message, response in zip(all_full_messages, all_full_responses)
     ]
-    print(all_messages_with_responses[0])
+    # print("------all_messages_with_responses------")
+    # print(all_messages_with_responses[0])
+    # sys.exit()
     if process_id == 0:
         evaluation_result = {
             'messages': all_messages_with_responses,

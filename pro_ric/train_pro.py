@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 import torch.nn.functional as F
 import swanlab
 
-from utils import Instructions_n, Instructions_summary_n, add_messages
+from utils import Instructions_n, Instructions_summary_n, add_messages_without_score
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -180,12 +180,12 @@ def train(args):
 
     instructions = Instructions_summary_n(num_rewards) if args.exp_type == 'summary' else Instructions_n(num_rewards)
     # dataset = dataset.select(range(200))
-    if 'messages' not in dataset.column_names:
-        dataset = dataset.map(lambda x: add_messages(x, instructions), batched=False, num_proc=20)
+    if 'messages' not in dataset.column_names or args.exp_type == 'assistant':
+        dataset = dataset.map(lambda x: add_messages_without_score(x, instructions), batched=False, num_proc=20)
     
     # Keep messages and score columns
     dataset = dataset.select_columns(["messages"] + score_cols)
-    # print(dataset[0:3])
+    # print(dataset[0])
     # import sys
     # sys.exit()
 

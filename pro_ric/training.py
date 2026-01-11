@@ -7,6 +7,7 @@ from transformers import TrainerCallback
 from trl import SFTTrainer, SFTConfig
 import numpy as np
 import swanlab
+import sys
 from utils import Instructions_n, add_chat_template_kwargs, load_main_tokenizer, save_configs, Instructions_summary_n, print_trainable_parameters, add_score4messaegs
 disable_caching()
 
@@ -109,7 +110,10 @@ def train_model(
     train_dataset = train_dataset.select(range(max_train_samples)) if max_train_samples is not None else train_dataset
     num_rewards = len(reward_model_path_list)
     dataset = train_dataset.map(lambda x: add_score4messaegs(x, num_rewards, score_temperature, score_rate), batched=False, num_proc=20)
-    # print(train_dataset[0:3])
+    # print(train_dataset[0])
+    # print(dataset[0])
+    # sys.exit()
+
     selected_index = np.arange(0, len(dataset))
     np.random.shuffle(selected_index)
     dataset = dataset.select(selected_index)

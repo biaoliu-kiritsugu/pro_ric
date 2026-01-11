@@ -15,7 +15,7 @@ from utils import Instructions_n, load_main_tokenizer, Instructions_summary_n
 from multi_reward_models import RewardModels
 
 # define paths for two datasets
-hhrlhf_dataset_path = 'Anthropic/hh-rlhf'
+hhrlhf_dataset_path = '/data/liubiao/llm/a800_1/huggingface/Anthropic/hh-rlhf'
 summary_dataset_path = 'openai/summarize_from_feedback'
 tokenizer_name = 'Qwen/Qwen3-0.6B'
 

@@ -199,6 +199,7 @@ def generate_data(
     local_dataset = local_dataset.remove_columns(remove_columns)
     local_dataset = local_dataset.rename_column('messages_prompt_reset_score', 'messages')
     # print(local_dataset[0])
+    # sys.exit()
 
     # if len(local_dataset) > 0:
     local_messages = local_dataset['messages']
@@ -262,9 +263,11 @@ def generate_data(
     reward_models = RewardModels(reward_model_path_list, rm_tokenizer_path_list, gpu_id, reward_stats_path)
     instructions = Instructions_summary_n(reward_models.num_rewards) if exp_type == 'summary' else Instructions_n(reward_models.num_rewards)
     full_local_responses = [instructions.get_full_response(message[0]['content'], assistant_content) for message, assistant_content in zip(local_messages, local_responses)]
-    # print(full_local_responses[0])
+    print(full_local_responses[0])
     queries_responses = [(instructions.get_input(text),  instructions.get_response(text)) for text in full_local_responses]
-    # print(queries_responses[0])
+    print(queries_responses[0])
+
+    # sys.exit()
 
     if hasattr(instructions, 'get_post'):
         rewards_list = reward_models.get_reward_model_scores(queries_responses, instructions.get_post)

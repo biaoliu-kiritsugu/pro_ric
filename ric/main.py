@@ -122,7 +122,7 @@ if __name__ == "__main__":
         model_path = checkpoint_path
 
         # ### generation
-        if script_args.num_generation_samples > 0 and not os.path.exists(os.path.join(checkpoint_path, 'data.csv')):
+        if script_args.num_generation_samples > 0 and not os.path.exists(os.path.join(checkpoint_path, 'data.json')):
             generate_data(
                 model_path,
                 reward_model_path_list=reward_model_path_list,

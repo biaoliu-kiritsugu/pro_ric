@@ -7,6 +7,7 @@ from trl import SFTTrainer, SFTConfig
 import numpy as np
 import pandas as pd
 from peft import LoraConfig, PeftModel
+import sys
 from utils import Instructions_n, load_main_tokenizer, save_configs, Instructions_summary_n, print_trainable_parameters, add_messages
 disable_caching()
 
@@ -85,6 +86,8 @@ def train_model(
         train_dataset = train_dataset.map(lambda x: add_messages(x, instructions), batched=False, num_proc=20)
     score_name_list = [f"score{i+1}" for i in range(num_objectives)]
     train_dataset = train_dataset.select_columns(["messages"] + score_name_list)
+    # print(train_dataset[0:3])
+    # sys.exit()
 
     selected_index = np.arange(0, len(train_dataset))
     np.random.shuffle(selected_index)

@@ -132,9 +132,10 @@ class Instructions_n():
             self.score_splits.append("<rm{}_score>".format(i+1))
 
     def get_post_with_score(self, query):
-        before_response_with_score = query.split(self.response_split)[0]
-        post_with_score = before_response_with_score.split(self.input_split)[1].strip()
-        return post_with_score
+        # query 的最后一个response_split之前的内容
+        parts = query.split(self.response_split)
+        before_response_with_score = self.response_split.join(parts[:-1]).strip() + self.response_split
+        return before_response_with_score
 
     def get_prompt(self, query):
         if self.score_splits[0] in query:
@@ -165,7 +166,7 @@ class Instructions_n():
     
     def get_full_response(self, prompt, response):
         # prompt_without_score = prompt.split(self.score_splits[0])[0]
-        return self.input_split + ' ' + prompt + '\n\n' + self.response_split + ' ' + response
+        return prompt + response
 
 
 class Instructions_summary_n():
@@ -698,11 +699,11 @@ def sample_goals_from_pro(
 
     scores = torch.cat(all_scores, dim=0).numpy()
     # scores 第一个维度的值和第三个维度的值随机交换位置
-    if scores.ndim == 2 and scores.shape[1] >= 3:
-        swap_mask = np.random.rand(scores.shape[0]) < 0.5
-        tmp = scores[swap_mask, 0].copy()
-        scores[swap_mask, 0] = scores[swap_mask, 2]
-        scores[swap_mask, 2] = tmp
+    # if scores.ndim == 2 and scores.shape[1] >= 3:
+    #     swap_mask = np.random.rand(scores.shape[0]) < 0.5
+    #     tmp = scores[swap_mask, 0].copy()
+    #     scores[swap_mask, 0] = scores[swap_mask, 2]
+    #     scores[swap_mask, 2] = tmp
     
     del pro_model
     clean_gpu_memory()
@@ -807,8 +808,13 @@ def reset_score_in_dataset_chat_template(
     
     def add_score(sample):
         user_content_without_score = sample['messages'][0]['content']
+        if exp_type == 'assistant':
+            parts = user_content_without_score.split(Instructions_n.response_split)
+            user_content_without_score = Instructions_n.response_split.join(parts[:-1]).strip() + ' '
         for i in range(n):
             user_content_without_score += instructions.score_splits[i] + ' ' + str(np.round(sample['score{}'.format(i+1)].item(), 1)) + ' '  
+        if exp_type == 'assistant':
+            user_content_without_score += Instructions_n.response_split
         sample['messages_prompt_reset_score'] = [{"role": "user", "content": user_content_without_score}]
         return sample
     return dataset.map(add_score, batched=False, num_proc=20)
@@ -988,7 +994,7 @@ def add_messages(sample, instructions):
     Add messages field to each sample with scores.
     Format: [{"role": "user", "content": "prompt_with_score"}, {"role": "assistant", "content": "response"}]
     """
-    summary_instructions = Instructions_summary_n.instruction_summary
+    summary_instructions = Instructions_summary_n.instruction_summary if isinstance(instructions, Instructions_summary_n) else ""
     user_content = instructions.get_post_with_score(sample['query'])
     user_content = summary_instructions + ' ' + user_content if isinstance(instructions, Instructions_summary_n) else user_content
     sample['messages'] = [
@@ -1003,10 +1009,12 @@ def add_messages_without_score(sample, instructions):
     Add messages field to each sample without scores.
     Format: [{"role": "user", "content": "prompt"}, {"role": "assistant", "content": "response"}]
     """
-    summary_instructions = Instructions_summary_n.instruction_summary
+    summary_instructions = Instructions_summary_n.instruction_summary if isinstance(instructions, Instructions_summary_n) else ""
     user_content = instructions.get_post_with_score(sample['query'])
     user_content_without_score = user_content.split(instructions.score_splits[0])[0]
     user_content = summary_instructions + ' ' + user_content_without_score if isinstance(instructions, Instructions_summary_n) else user_content_without_score
+    if not isinstance(instructions, Instructions_summary_n):
+        user_content = user_content.strip() + instructions.response_split
     sample['messages'] = [
         {"role": "user", "content": user_content.strip()},
         {"role": "assistant", "content": sample['response']}
@@ -1019,9 +1027,15 @@ def add_score4messaegs(sample, num_rewards, score_temperature, rate=10):
     scores = scores / score_temperature
     scores = np.exp(scores) / np.sum(np.exp(scores)) 
     scores = scores * rate
+    # print(user_content)
+    # 去除最后一个response_split以及后面的内容
+    parts = user_content.split(Instructions_n.response_split)
+    user_content = Instructions_n.response_split.join(parts[:-1]).strip() + ' '
+    # print(user_content)
+    # sys.exit()
     for i in range(num_rewards):
         user_content += '<rm{}_score>'.format(i+1) + ' ' + str(np.round(scores[i], 1)) + ' '
-    sample['messages'][0]['content'] = user_content.strip()
+    sample['messages'][0]['content'] = user_content.strip() + '\n\nAssistant:'
     return sample
 
 def add_prompt_messages_without_score(sample, instructions):

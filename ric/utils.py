@@ -81,9 +81,10 @@ class Instructions_n():
             self.score_splits.append("<rm{}_score>".format(i+1))
 
     def get_post_with_score(self, query):
-        before_response_with_score = query.split(self.response_split)[0]
-        post_with_score = before_response_with_score.split(self.input_split)[1].strip()
-        return post_with_score
+        # query 的最后一个response_split之前的内容
+        parts = query.split(self.response_split)
+        before_response_with_score = self.response_split.join(parts[:-1]).strip() + self.response_split
+        return before_response_with_score
 
     def get_prompt(self, query):
         if self.score_splits[0] in query:
@@ -114,7 +115,8 @@ class Instructions_n():
     
     def get_full_response(self, prompt, response):
         # prompt_without_score = prompt.split(self.score_splits[0])[0]
-        return self.input_split + ' ' + prompt + '\n\n' + self.response_split + ' ' + response
+        # return self.input_split + ' ' + prompt + '\n\n' + self.response_split + ' ' + response
+        return prompt + response
 
 
 class Instructions_summary_n():
@@ -645,6 +647,9 @@ def reset_score_in_dataset_chat_template(dataset, rewards_list=None, exp_type='a
         user_content_without_score = sample['messages'][0]['content'].split(instructions.score_splits[0])[0]
         for i in range(n):
             user_content_without_score += instructions.score_splits[i] + ' ' + str(np.round(sample['score{}'.format(i+1)].item(), 1)) + ' '  
+
+        if exp_type == 'assistant':
+            user_content_without_score += instructions.response_split
         sample['messages_prompt_reset_score'] = [{"role": "user", "content": user_content_without_score}]
         return sample
     return dataset.map(add_score, batched=False, num_proc=20)
